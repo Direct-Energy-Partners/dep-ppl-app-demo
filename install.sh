@@ -9,8 +9,6 @@ python3 -m venv "$DIR/.venv"
 "$DIR/.venv/bin/pip" install --upgrade pip
 "$DIR/.venv/bin/pip" install -r "$DIR/requirements.txt"
 
-chmod +x "$DIR/start.sh"
-
 CRON="@reboot sleep 30 && $DIR/start.sh  # DEP_PPL_APP"
 ( crontab -l 2>/dev/null | grep -v DEP_PPL_APP || true ; echo "$CRON" ) | crontab -
 
