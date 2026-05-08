@@ -10,7 +10,6 @@ Repository for developing custom applications for the PPL controller.
 │   └── main.py          # Main entry point – edit this to implement your application
 ├── examples/            # Example applications for reference
 ├── pplapp.py            # PPL controller interface (NATS connection, measurements, commands)
-├── boilerplate.py       # Minimal boilerplate template
 ├── .env                 # Environment variables (IP address, NATS credentials)
 ├── requirements.txt     # Python dependencies
 ├── install.sh           # One-time setup script for the controller
