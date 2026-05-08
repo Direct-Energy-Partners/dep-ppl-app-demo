@@ -1,8 +1,5 @@
 """
 Main entry point for the app.
-
-Connects to the PPL controller via NATS, initialises all device abstractions,
-and runs the orchestrator control loop.
 """
 
 import logging
@@ -26,12 +23,18 @@ formatter = logging.Formatter(
     fmt="[%(asctime)s] %(levelname)s %(name)s %(message)s",
     datefmt="%d.%m.%Y %H:%M:%S",
 )
-fileHandler = logging.FileHandler("app.log")
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+fileHandler = logging.FileHandler(os.path.join(_project_root, "app.log"))
 fileHandler.setFormatter(formatter)
 log.addHandler(fileHandler)
 
+consoleHandler = logging.StreamHandler()
+consoleHandler.setFormatter(formatter)
+log.addHandler(consoleHandler)
+
 # -- Main Application Logic ---------------------------------------------------
 def ems(app):
+    # TODO: Implement energy management system logic
     pass
 
 def main() -> None:
@@ -45,7 +48,7 @@ def main() -> None:
         log.error("IP_ADDRESS, NATS_USERNAME, and NATS_PASSWORD must be set in .env")
         sys.exit(1)
 
-    log.info(f"Connecting to PPL controller at {ipAddress}")
+    log.info("Connecting to PPL controller at %s", ipAddress)
     app = Pplapp(ipAddress, username, password)
 
     time.sleep(STARTUP_DELAY_S)
@@ -55,12 +58,11 @@ def main() -> None:
             try:
                 ems(app)
             except Exception as e:
-                log.exception(f"Error in control loop: {e}")
+                log.exception("Error in control loop: %s", e)
             time.sleep(CONTROL_LOOP_INTERVAL_S)
 
     except KeyboardInterrupt:
         log.info("Shutdown requested")
-        time.sleep(CONTROL_LOOP_INTERVAL_S)
         app.stop()
         log.info("Clean shutdown complete")
 
