@@ -267,9 +267,6 @@ class Orchestrator:
             rectifier_current_limit=commands.get("reg_current", 0),
             infypower_charger_power_w=0,
             winline_charger_power_w=0,
-            infypower_charger_status="idle",
-            winline_charger_status="idle",
-            total_demand_w=0,
             description=f"BATTERY_BLACKSTART - {self.proc_battery_blackstart.state.description}",
         )
 
@@ -296,9 +293,6 @@ class Orchestrator:
             rectifier_current_limit=commands.get("reg_current", 0),
             infypower_charger_power_w=0,
             winline_charger_power_w=0,
-            infypower_charger_status="idle",
-            winline_charger_status="idle",
-            total_demand_w=0,
             description=f"GRID_BLACKSTART - {self.proc_grid_blackstart.state.description}",
         )
 
@@ -366,9 +360,6 @@ class Orchestrator:
             rectifier_current_limit=commands.get("reg_current", 0),
             infypower_charger_power_w=commands.get("infy_charger_w", 0),
             winline_charger_power_w=commands.get("winline_charger_w", 0),
-            infypower_charger_status="idle",
-            winline_charger_status="idle",
-            total_demand_w=0,
             description=f"PLANNED_SHUTDOWN - {self.proc_planned_shutdown.state.description}",
         )
 
@@ -377,41 +368,14 @@ class Orchestrator:
     # --------------------------------------------------------------------- #
 
     def _output_powered_off(self) -> ModeOutput:
-        return ModeOutput(
-            converdan_enabled=False,
-            rectifier_enabled=False,
-            infypower_charger_power_w=0,
-            winline_charger_power_w=0,
-            infypower_charger_status="idle",
-            winline_charger_status="idle",
-            total_demand_w=0,
-            description="POWERED_OFF - all devices idle, PLC on UPS",
-        )
+        return ModeOutput(description="POWERED_OFF - all devices idle, PLC on UPS")
 
     def _output_fault(self) -> ModeOutput:
         reasons = ", ".join(self.system_mode_fsm.ctx.fault_reasons) if self.system_mode_fsm.ctx.fault_reasons else "unknown"
-        return ModeOutput(
-            converdan_enabled=False,
-            rectifier_enabled=False,
-            infypower_charger_power_w=0,
-            winline_charger_power_w=0,
-            infypower_charger_status="idle",
-            winline_charger_status="idle",
-            total_demand_w=0,
-            description=f"FAULT - {reasons}. Operator reset required.",
-        )
+        return ModeOutput(description=f"FAULT - {reasons}. Operator reset required.")
 
     def _output_safe(self) -> ModeOutput:
-        return ModeOutput(
-            converdan_enabled=False,
-            rectifier_enabled=False,
-            infypower_charger_power_w=0,
-            winline_charger_power_w=0,
-            infypower_charger_status="idle",
-            winline_charger_status="idle",
-            total_demand_w=0,
-            description="Safe mode - all devices disabled",
-        )
+        return ModeOutput(description="Safe mode - all devices disabled")
 
     # --------------------------------------------------------------------- #
     # Internal - State reading
@@ -490,8 +454,6 @@ class Orchestrator:
         if prot.charging_suspended:
             output.infypower_charger_power_w = 0
             output.winline_charger_power_w = 0
-            output.infypower_charger_status = "idle"
-            output.winline_charger_status = "idle"
             output.description += " [charging suspended]"
 
         # --- BESS critical SOC - curtail everything --------------------------
@@ -499,8 +461,6 @@ class Orchestrator:
             output.converdan_enabled = False
             output.infypower_charger_power_w = 0
             output.winline_charger_power_w = 0
-            output.infypower_charger_status = "idle"
-            output.winline_charger_status = "idle"
             output.description += " [BESS SOC critical]"
 
         # --- AC overcurrent - limit REG and charger power --------------------
@@ -591,13 +551,13 @@ class Orchestrator:
             self.rectifier.disable()
 
         # -- Winline EV charger -----------------------------------------------
-        if output.winline_charger_status == "Charging":
+        if output.winline_charger_power_w > 0:
             self.winline.set_total_power(output.winline_charger_power_w)
         else:
             self.winline.disable()
 
         # -- Infypower EV charger ---------------------------------------------
-        if output.infypower_charger_status == "Charging":
+        if output.infypower_charger_power_w > 0:
             self.infypower_charger.set_power(output.infypower_charger_power_w)
         else:
             self.infypower_charger.disable()

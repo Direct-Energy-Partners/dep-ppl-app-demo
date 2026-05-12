@@ -46,7 +46,7 @@ class SystemModeContext:
 
     def transition_to(self, new_mode: SystemMode, reason: str = "") -> None:
         if new_mode != self.mode:
-            log.info("D1 transition: %s → %s (%s)", self.mode.value, new_mode.value, reason)
+            log.info("system_mode transition: %s → %s (%s)", self.mode.value, new_mode.value, reason)
             self.previous_mode = self.mode
             self.mode = new_mode
 

@@ -33,7 +33,7 @@ States:
                         REG I-limit = 100A.
 
   BESS_RECHARGING     - No EV sessions, BESS SOC ≤ 60%.
-                        Re-enable Converdan (D4 Proc E → close K3).
+                        Re-enable Converdan (close K3).
                         REG V-setpoint = Converdan P1 voltage + ΔV.
                         Ramp ΔV by +5V / 5s until BESS charges at ~30kW.
                         REG I-limit = 100A.
@@ -83,7 +83,7 @@ class GCContext:
 
     def transition_to(self, new_state: GCState, reason: str = "") -> None:
         if new_state != self.state:
-            log.info("D2 transition: %s → %s (%s)", self.state.value, new_state.value, reason)
+            log.info("grid_connected transition: %s → %s (%s)", self.state.value, new_state.value, reason)
             self.state = new_state
             self.state_entry_time = time.time()
 
@@ -238,9 +238,6 @@ class GridConnectedFSM:
             rectifier_current_limit=0,
             infypower_charger_power_w=0,
             winline_charger_power_w=0,
-            infypower_charger_status="idle",
-            winline_charger_status="idle",
-            total_demand_w=0,
             description="GC_STANDBY - bus live, no EV sessions, REG I-limit=0A",
         )
 
@@ -260,9 +257,6 @@ class GridConnectedFSM:
             rectifier_current_limit=0,
             infypower_charger_power_w=infy_w,
             winline_charger_power_w=winline_w,
-            infypower_charger_status="Charging",
-            winline_charger_status="Charging",
-            total_demand_w=infy_w + winline_w,
             description=f"BESS_SOLE_SUPPLY - Infy {infy_w/1000:.0f}kW, Win {winline_w/1000:.0f}kW, REG I=0A",
         )
 
@@ -290,9 +284,6 @@ class GridConnectedFSM:
             rectifier_current_limit=reg_current,
             infypower_charger_power_w=infy_w,
             winline_charger_power_w=winline_w,
-            infypower_charger_status="Charging",
-            winline_charger_status="Charging",
-            total_demand_w=infy_w + winline_w,
             description=f"BESS_GRID_SHARED - Infy {infy_w/1000:.0f}kW, Win {winline_w/1000:.0f}kW, REG I={reg_current:.0f}A",
         )
 
@@ -318,9 +309,6 @@ class GridConnectedFSM:
             rectifier_current_limit=reg_current,
             infypower_charger_power_w=infy_w,
             winline_charger_power_w=winline_w,
-            infypower_charger_status="Charging" if infy_w > 0 else "idle",
-            winline_charger_status="Charging" if winline_w > 0 else "idle",
-            total_demand_w=infy_w + winline_w,
             description=f"BESS_LOW_SOC_HOLD - ramping down, REG I={reg_current:.0f}A",
         )
 
@@ -337,9 +325,6 @@ class GridConnectedFSM:
             rectifier_current_limit=config.RECTIFIER_CURRENT_MAX,
             infypower_charger_power_w=infy_w,
             winline_charger_power_w=winline_w,
-            infypower_charger_status="Charging" if infy_w > 0 else "idle",
-            winline_charger_status="Charging" if winline_w > 0 else "idle",
-            total_demand_w=infy_w + winline_w,
             description=f"GRID_SOLE_SUPPLY - REG I=100A, Converdan off, SOC≤20%",
         )
 
@@ -361,8 +346,5 @@ class GridConnectedFSM:
             rectifier_current_limit=config.RECTIFIER_CURRENT_MAX,
             infypower_charger_power_w=0,
             winline_charger_power_w=0,
-            infypower_charger_status="idle",
-            winline_charger_status="idle",
-            total_demand_w=0,
             description=f"BESS_RECHARGING - REG V={reg_voltage:.0f}V, ΔV={self.ctx.recharge_voltage_delta:.0f}V",
         )
