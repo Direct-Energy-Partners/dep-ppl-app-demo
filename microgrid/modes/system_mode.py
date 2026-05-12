@@ -3,7 +3,7 @@ D1: System Modes - Top-level FSM.
 
 States:
   POWERED_OFF        - All contactors open, all devices idle, PLC alive on UPS/aux
-  BESS_BLACKSTART    - BESS energises bus via Converdan (preferred startup path)
+  BATTERY_BLACKSTART - BESS energises bus via Converdan (preferred startup path)
   GRID_BLACKSTART    - REG energises bus via K14 (BESS unavailable fallback)
   GRID_CONNECTED     - Bus live, BESS + REG available → see D2
   ISLANDED           - Grid absent, BESS sole supply → see D3

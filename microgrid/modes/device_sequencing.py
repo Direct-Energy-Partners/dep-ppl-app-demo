@@ -1,14 +1,16 @@
 """
 D4: Device Sequencing - Step-by-step contactor and device startup/shutdown.
 
-Called by D1 during startup/shutdown and by D2/D3 during mode transitions.
+Called by the orchestrator during startup/shutdown and mode transitions.
 
-Procedures:
-  A - BESS Black Start (preferred startup path)
-  B - Grid Black Start (BESS unavailable)
-  C - Converdan Disable (SOC limit or shutdown pre-step)
-  D - Planned Shutdown
-  E - BESS + Converdan Reconnect (called by Proc B when BESS SOC recovers to ≥ 20%)
+Procedures (active):
+  BatteryBlackStart  - BESS energises bus via Converdan (preferred startup path)
+  GridBlackStart     - REG energises bus (BESS unavailable fallback)
+  PlannedShutdown    - Graceful ramp-down and contactor open sequence
+
+Procedures (defined, not currently wired into orchestrator):
+  ConverdanDisable   - Disable Converdan (SOC limit or shutdown pre-step)
+  ConverdanReconnect - Reconnect BESS + Converdan after grid-only start
 
 Each procedure is modelled as a step-based sequence. The orchestrator advances
 one step per control cycle by calling advance(). Steps may block on confirmation

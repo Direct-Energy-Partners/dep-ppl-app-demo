@@ -4,7 +4,7 @@ System orchestrator - the top-level control loop that:
 1. Reads all device measurements into a SystemState snapshot.
 2. Evaluates software protection flags.
 3. Computes battery limits.
-4. Runs the hierarchical FSM: D1 (system mode) → D2/D3 (sub-modes) → D4 (sequencing).
+4. Runs the hierarchical FSM: system_mode_fsm → grid_connected_fsm/islanded_fsm (sub-modes) → startup/shutdown sequencing procedures.
 5. Applies protection overrides.
 6. Sends commands to hardware.
 """
@@ -31,9 +31,7 @@ from microgrid.modes.islanded import IslandedFSM
 from microgrid.modes.device_sequencing import (
     ProcedureBatteryBlackStart,
     ProcedureGridBlackStart,
-    ProcedureConverdanDisable,
     ProcedurePlannedShutdown,
-    ProcedureConverdanReconnect,
 )
 
 log = logging.getLogger("microgrid.orchestrator")
@@ -140,17 +138,16 @@ class Orchestrator:
         # Protection manager
         self.protection = ProtectionManager()
 
-        # Hierarchical FSMs
-        self.d1 = SystemModeFSM()
-        self.d2 = GridConnectedFSM()
-        self.d3 = IslandedFSM()
+        # Top-level system mode FSM
+        self.system_mode_fsm = SystemModeFSM()
+        # Sub-FSMs (run only when their corresponding system mode is active)
+        self.grid_connected_fsm = GridConnectedFSM()
+        self.islanded_fsm = IslandedFSM()
 
-        # D4 Procedures
-        self.proc_a = ProcedureBatteryBlackStart()
-        self.proc_b = ProcedureGridBlackStart()
-        self.proc_c = ProcedureConverdanDisable()
-        self.proc_d = ProcedurePlannedShutdown()
-        self.proc_e = ProcedureConverdanReconnect()
+        # Startup / shutdown sequencing procedures
+        self.proc_battery_blackstart = ProcedureBatteryBlackStart()
+        self.proc_grid_blackstart = ProcedureGridBlackStart()
+        self.proc_planned_shutdown = ProcedurePlannedShutdown()
 
         # Persistent state across ticks
         self._prev_infypower_w: float = 0.0
@@ -165,8 +162,8 @@ class Orchestrator:
         """Execute one control cycle. Returns a human-readable status string."""
         state = self._read_state()
 
-        # --- D1: Evaluate top-level system mode ---
-        self.d1.evaluate(
+        # --- Evaluate top-level system mode ---
+        self.system_mode_fsm.evaluate(
             battery_available=state.battery_available,
             battery_soc=state.battery_soc,
             ac_grid_available=state.ac_grid_available,
@@ -192,10 +189,10 @@ class Orchestrator:
         self._prev_winline_w = output.winline_charger_power_w
         self._prev_rectifier_current = output.rectifier_current_limit
 
-        d1_mode = self.d1.mode.value
+        system_mode = self.system_mode_fsm.mode.value
         sub_state = self._get_sub_state_name()
         summary = (
-            f"[D1:{d1_mode}|{sub_state}] {output.description} | "
+            f"[{system_mode}|{sub_state}] {output.description} | "
             f"SOC={state.battery_soc:.1f}% BusV={state.dc_bus_voltage:.0f}V "
             f"Infy={output.infypower_charger_power_w/1000:.0f}kW "
             f"Win={output.winline_charger_power_w/1000:.0f}kW "
@@ -205,23 +202,23 @@ class Orchestrator:
 
     @property
     def active_mode(self) -> str:
-        return f"{self.d1.mode.value}|{self._get_sub_state_name()}"
+        return f"{self.system_mode_fsm.mode.value}|{self._get_sub_state_name()}"
 
     def request_shutdown(self) -> None:
         """External interface for operator shutdown."""
-        self.d1.request_shutdown()
+        self.system_mode_fsm.request_shutdown()
 
     def request_fault_reset(self) -> None:
         """External interface for operator fault reset."""
-        self.d1.request_fault_reset()
+        self.system_mode_fsm.request_fault_reset()
 
     # --------------------------------------------------------------------- #
     # Internal - Sub-FSM dispatch
     # --------------------------------------------------------------------- #
 
     def _dispatch_sub_fsm(self, state: SystemState) -> ModeOutput:
-        """Run the appropriate sub-FSM based on current D1 mode."""
-        mode = self.d1.mode
+        """Run the appropriate sub-FSM based on the current system mode."""
+        mode = self.system_mode_fsm.mode
 
         if mode == SystemMode.POWERED_OFF:
             return self._output_powered_off()
@@ -247,11 +244,11 @@ class Orchestrator:
         return self._output_safe()
 
     def _run_battery_blackstart(self, state: SystemState) -> ModeOutput:
-        """D4 Procedure A - BESS Black Start."""
-        if not self.proc_a.is_running:
-            self.proc_a.start()
+        """Startup sequencing procedure: BESS energises the DC bus via Converdan."""
+        if not self.proc_battery_blackstart.is_running:
+            self.proc_battery_blackstart.start()
 
-        commands = self.proc_a.advance(
+        commands = self.proc_battery_blackstart.advance(
             battery_soc=state.battery_soc,
             battery_contactor_closed=state.battery_contactor_closed,
             converdan_port1_voltage=state.converdan_port1_voltage,
@@ -273,15 +270,15 @@ class Orchestrator:
             infypower_charger_status="idle",
             winline_charger_status="idle",
             total_demand_w=0,
-            description=f"BATTERY_BLACKSTART - {self.proc_a.state.description}",
+            description=f"BATTERY_BLACKSTART - {self.proc_battery_blackstart.state.description}",
         )
 
     def _run_grid_blackstart(self, state: SystemState) -> ModeOutput:
-        """D4 Procedure B - Grid Black Start."""
-        if not self.proc_b.is_running:
-            self.proc_b.start()
+        """Startup sequencing procedure: REG energises the DC bus (BESS unavailable fallback)."""
+        if not self.proc_grid_blackstart.is_running:
+            self.proc_grid_blackstart.start()
 
-        commands = self.proc_b.advance(
+        commands = self.proc_grid_blackstart.advance(
             ac_grid_available=state.ac_grid_available,
             dc_bus_voltage=state.dc_bus_voltage,
             reg_output_voltage=state.reg_output_voltage,
@@ -302,12 +299,12 @@ class Orchestrator:
             infypower_charger_status="idle",
             winline_charger_status="idle",
             total_demand_w=0,
-            description=f"GRID_BLACKSTART - {self.proc_b.state.description}",
+            description=f"GRID_BLACKSTART - {self.proc_grid_blackstart.state.description}",
         )
 
     def _run_grid_connected(self, state: SystemState) -> ModeOutput:
-        """D2 sub-FSM - Grid Connected energy management."""
-        return self.d2.evaluate(
+        """Sub-FSM for grid-connected energy management (BESS + REG available)."""
+        return self.grid_connected_fsm.evaluate(
             battery_soc=state.battery_soc,
             battery_available=state.battery_available,
             battery_voltage=state.battery_voltage,
@@ -321,8 +318,8 @@ class Orchestrator:
         )
 
     def _run_islanded(self, state: SystemState) -> ModeOutput:
-        """D3 sub-FSM - Islanded mode."""
-        output = self.d3.evaluate(
+        """Sub-FSM for islanded mode (BESS sole supply, no grid)."""
+        output = self.islanded_fsm.evaluate(
             battery_soc=state.battery_soc,
             battery_available_power_w=state.battery_available_power_w,
             battery_voltage=state.battery_voltage,
@@ -334,19 +331,19 @@ class Orchestrator:
             prev_winline_w=self._prev_winline_w,
         )
 
-        # Check if D3 signals grid restore complete → D1 handles transition
-        if self.d3.grid_restore_complete:
-            self.d1.ctx.transition_to(SystemMode.GRID_CONNECTED, "D3 grid restore complete")
-            self.d2.reset()
+        # If the islanded FSM signals grid restore complete, transition back to GRID_CONNECTED
+        if self.islanded_fsm.grid_restore_complete:
+            self.system_mode_fsm.ctx.transition_to(SystemMode.GRID_CONNECTED, "islanded FSM: grid restore complete")
+            self.grid_connected_fsm.reset()
 
         return output
 
     def _run_planned_shutdown(self, state: SystemState) -> ModeOutput:
-        """D4 Procedure D - Planned Shutdown."""
-        if not self.proc_d.is_running:
-            self.proc_d.start()
+        """Shutdown sequencing procedure: graceful ramp-down and contactor open sequence."""
+        if not self.proc_planned_shutdown.is_running:
+            self.proc_planned_shutdown.start()
 
-        commands = self.proc_d.advance(
+        commands = self.proc_planned_shutdown.advance(
             charger_output_zero=(
                 self.infypower_charger.total_power <= 0
                 and self.winline.total_power <= 0
@@ -372,7 +369,7 @@ class Orchestrator:
             infypower_charger_status="idle",
             winline_charger_status="idle",
             total_demand_w=0,
-            description=f"PLANNED_SHUTDOWN - {self.proc_d.state.description}",
+            description=f"PLANNED_SHUTDOWN - {self.proc_planned_shutdown.state.description}",
         )
 
     # --------------------------------------------------------------------- #
@@ -392,7 +389,7 @@ class Orchestrator:
         )
 
     def _output_fault(self) -> ModeOutput:
-        reasons = ", ".join(self.d1.ctx.fault_reasons) if self.d1.ctx.fault_reasons else "unknown"
+        reasons = ", ".join(self.system_mode_fsm.ctx.fault_reasons) if self.system_mode_fsm.ctx.fault_reasons else "unknown"
         return ModeOutput(
             converdan_enabled=False,
             rectifier_enabled=False,
@@ -614,21 +611,21 @@ class Orchestrator:
         return (
             not state.ev_sessions_active
             and state.prev_rectifier_current <= 0
-            and self.proc_d.is_complete
+            and self.proc_planned_shutdown.is_complete
         )
 
 
     def _get_sub_state_name(self) -> str:
         """Get the current sub-state name for logging."""
-        mode = self.d1.mode
+        mode = self.system_mode_fsm.mode
         if mode == SystemMode.GRID_CONNECTED:
-            return self.d2.state.value
+            return self.grid_connected_fsm.state.value
         elif mode == SystemMode.ISLANDED:
-            return self.d3.state.value
+            return self.islanded_fsm.state.value
         elif mode == SystemMode.BATTERY_BLACKSTART:
-            return f"ProcA_step{self.proc_a.state.step}"
+            return f"battery_blackstart_step{self.proc_battery_blackstart.state.step}"
         elif mode == SystemMode.GRID_BLACKSTART:
-            return f"ProcB_step{self.proc_b.state.step}"
+            return f"grid_blackstart_step{self.proc_grid_blackstart.state.step}"
         elif mode == SystemMode.PLANNED_SHUTDOWN:
-            return f"ProcD_step{self.proc_d.state.step}"
+            return f"planned_shutdown_step{self.proc_planned_shutdown.state.step}"
         return mode.value
