@@ -8,7 +8,8 @@ All voltages in V, currents in A, power in W, SOC in %, temperature in °C.
 # Device IDs (as registered in the NATS/PPL system)
 # =============================================================================
 BATTERY_ID = "poweroad"
-CONVERTER_ID = "converdan"
+CONVERTER_ID_1 = "converdan_1"
+CONVERTER_ID_2 = "converdan_2"
 RECTIFIER_ID = "infypower_module"
 WINLINE_CHARGER_ID = "winline"
 INFYPOWER_CHARGER_ID = "infypower_charger"

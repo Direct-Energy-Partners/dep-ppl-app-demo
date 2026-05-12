@@ -17,8 +17,8 @@ from microgrid import config
 
 class Converdan(Device):
 
-    def __init__(self, app):
-        super().__init__(app, config.CONVERTER_ID)
+    def __init__(self, app, device_id: str = config.CONVERTER_ID_1):
+        super().__init__(app, device_id)
 
     # -- measurements ---------------------------------------------------------
 

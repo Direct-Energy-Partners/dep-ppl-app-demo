@@ -14,7 +14,7 @@ import time
 
 from microgrid import config
 from microgrid.devices.battery import Battery
-from microgrid.devices.converdan import Converdan
+from microgrid.devices.dcdc_converter import DCDCConverter
 from microgrid.devices.infypower_rectifier import InfypowerRectifier
 from microgrid.devices.winline_charger import WinlineCharger
 from microgrid.devices.infypower_charger import InfypowerCharger
@@ -101,7 +101,7 @@ def setup_default_measurements(app: MockPplapp, soc: float = 50.0) -> None:
         "measure.ports.port1.power.discharge.max": 50000,
     })
 
-    app.inject(config.CONVERTER_ID, {
+    _converdan_data = {
         "state": "online",
         "measure.ports.port1.voltage": battery_voltage,
         "measure.ports.port2.voltage": bus_voltage,
@@ -109,7 +109,9 @@ def setup_default_measurements(app: MockPplapp, soc: float = 50.0) -> None:
         "measure.ports.port2.power": 0,
         "measure.ports.port2.method": "idle",
         "measure.transformer.ratio": config.CONVERDAN_RATIO_NOMINAL,
-    })
+    }
+    app.inject(config.CONVERTER_ID_1, _converdan_data)
+    app.inject(config.CONVERTER_ID_2, _converdan_data)
 
     app.inject(config.RECTIFIER_ID, {
         "state": "online",
@@ -158,7 +160,7 @@ def run_scenario(
 
     orchestrator = Orchestrator(
         battery=Battery(app),
-        converdan=Converdan(app),
+        converdan=DCDCConverter(app),
         rectifier=InfypowerRectifier(app),
         winline=WinlineCharger(app),
         infypower_charger=InfypowerCharger(app),

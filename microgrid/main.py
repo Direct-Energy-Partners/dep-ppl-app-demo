@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pplapp import Pplapp
 from microgrid import config
 from microgrid.devices.battery import Battery
-from microgrid.devices.converdan import Converdan
+from microgrid.devices.dcdc_converter import DCDCConverter
 from microgrid.devices.infypower_rectifier import InfypowerRectifier
 from microgrid.devices.winline_charger import WinlineCharger
 from microgrid.devices.infypower_charger import InfypowerCharger
@@ -41,7 +41,7 @@ log = logging.getLogger("microgrid.main")
 def build_orchestrator(app: Pplapp) -> Orchestrator:
     """Instantiate all device wrappers and wire them into the orchestrator."""
     battery = Battery(app)
-    converdan = Converdan(app)
+    converdan = DCDCConverter(app)
     rectifier = InfypowerRectifier(app)
     winline = WinlineCharger(app)
     infypower_charger = InfypowerCharger(app)
