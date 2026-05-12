@@ -85,7 +85,7 @@ class Pplapp:
                     await self.natsDisconnect()
                     return
 
-                # Connection dropped — small backoff before retry
+                # Connection dropped - small backoff before retry
                 print("Connection dropped, retrying in 5 seconds...")
                 await asyncio.sleep(5)
 
