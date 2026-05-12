@@ -1,25 +1,5 @@
-"""
-D4: Device Sequencing - Step-by-step contactor and device startup/shutdown.
+"""Device Sequencing"""
 
-Called by the orchestrator during startup/shutdown and mode transitions.
-
-Procedures (active):
-  BatteryBlackStart  - BESS energises bus via Converdan (preferred startup path)
-  GridBlackStart     - REG energises bus (BESS unavailable fallback)
-  PlannedShutdown    - Graceful ramp-down and contactor open sequence
-
-Procedures (defined, not currently wired into orchestrator):
-  ConverdanDisable   - Disable Converdan (SOC limit or shutdown pre-step)
-  ConverdanReconnect - Reconnect BESS + Converdan after grid-only start
-
-Each procedure is modelled as a step-based sequence. The orchestrator advances
-one step per control cycle by calling advance(). Steps may block on confirmation
-(e.g. "poll status and confirm ready") which is simulated by checking device state.
-
-VOLTAGE MATCH CONTACTOR:
-  K1 only - no precharge resistor circuit. PLC ensures REG setpoint is within
-  5V of DC bus voltage (Acrel) before issuing contactor close command.
-"""
 from __future__ import annotations
 
 import enum

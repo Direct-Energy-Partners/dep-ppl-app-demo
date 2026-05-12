@@ -1,54 +1,5 @@
-"""
-D2: Grid Connected sub-FSM.
+"""Grid Connected sub-FSM."""
 
-Active when D1 System Mode is GRID_CONNECTED. Governs power flow between
-BESS, REG, and EV chargers. Protection limits apply continuously.
-
-States:
-  GC_STANDBY          - Bus live, no active EV sessions.
-                        REG I-limit = 0A (voltage follower only).
-                        Converdan enabled at fixed ratio 1.058.
-                        K11, K13 closed. REG at DC bus voltage.
-                        SOC 20-80%, nominal operating range.
-
-  BESS_SOLE_SUPPLY    - EV chargers active, BESS can cover demand.
-                        Converdan enabled at ratio 1.058.
-                        REG I-limit = 0A (voltage follower only).
-                        EV setpoints: Infy 60kW, Winline 80kW.
-
-  BESS_GRID_SHARED    - EV demand > BESS available power.
-                        Converdan enabled at ratio 1.058.
-                        REG I-limit = 100A (CV mode, voltage follower).
-                        EV setpoints: Infy + Winline 120kW.
-
-  BESS_LOW_SOC_HOLD   - SOC ≤ 20% and EV sessions were running.
-                        Ramp down all charger setpoints at 1kW/s.
-                        EV setpoints: Infy + Winline 25kW.
-                        Raise REG I-limit → 100A (5s walk-in) before
-                        disabling Converdan (passive → K3 open).
-                        Transition to GRID_SOLE_SUPPLY when Converdan idle.
-
-  GRID_SOLE_SUPPLY    - BESS SOC ≤ 20%, Converdan disabled (passive → K3 open).
-                        REG holds last DC bus voltage (Acrel meter reading).
-                        REG I-limit = 100A.
-
-  BESS_RECHARGING     - No EV sessions, BESS SOC ≤ 60%.
-                        Re-enable Converdan (close K3).
-                        REG V-setpoint = Converdan P1 voltage + ΔV.
-                        Ramp ΔV by +5V / 5s until BESS charges at ~30kW.
-                        REG I-limit = 100A.
-
-Notes from diagram:
-  - BESS can recharge when <= 70%.
-  - BESS stops recharging at 80%.
-  - BESS stops discharging at 20%.
-  - BESS discharge resumes at 30% (hysteresis).
-  - EV charger power ≤ 90% of available supply (grid and/or BESS).
-  - Per-charger setpoint written via Modbus before session.
-  - New vehicle mid-session: reduce other charger first.
-  - REG I-limit changes: always apply 5s walk-in time before increasing.
-  - REG CAN 0x13 cmd sets walk-in; factory default = 5s.
-"""
 from __future__ import annotations
 
 import enum

@@ -1,48 +1,5 @@
-"""
-D3: Islanded sub-FSM.
+"""Islanded sub-FSM."""
 
-Active when D1 System Mode is ISLANDED. REG unavailable. BESS is sole supply
-via Converdan (DC transformer mode). No BESS charging possible.
-Same continuous protection limits apply as per D2.
-
-States:
-  ISL_STANDBY           - Bus live via BESS + Converdan. Ratio fixed at 1.058.
-                          No EV sessions. K11, K13 closed. REG offline (K14 open).
-
-  ISL_EV_CHARGING       - EV session(s) active.
-                          Total setpoints ≤ (P_BESS_available) × 90%.
-                          Max combined: 80kW (40kW each when both active).
-                          New vehicle: reduce other charger first.
-
-  ISL_SOC_LOW           - BESS SOC approaching 20%.
-                          Ramp down all charger setpoints at 1kW/s.
-                          Suspend sessions when SOC ≤ 20%.
-                          Converdan remains enabled (BESS still coupled).
-                          Hard limit: SOC ≤ 10% → D1 FAULT.
-
-  ISL_CHARGERS_SUSPENDED - SOC ≤ 20%. All EV sessions stopped.
-                          K11, K13 remain closed (chargers online, no sessions).
-                          Converdan enabled (bus voltage maintained).
-                          Await grid restore or further SOC depletion.
-
-  ISL_CRITICAL_SOC      - SOC ≤ 10%. Emergency shutdown.
-                          Disable Converdan (passive → K3 open).
-                          Bus collapses. Await grid restore.
-                          Operator reset required before restart.
-
-  GRID_RESTORE_PENDING  - AC meter detects grid voltage stable ≥ 30s.
-                          REG starts up, sets V = Converdan P1 voltage.
-                          Voltage match confirmed → close K14 (5s walk-in).
-                          Transition D1 to GRID_CONNECTED.
-
-Notes:
-  - Grid detection: AC meter (Phoenix Contact) monitors AC voltage.
-    Normal = 216-253VAC on all 3 phases. 30s stability timer.
-  - Scenario 14: Grid restore, BESS low SOC:
-    Converdan stays ENABLED (bus must remain live for REG voltage match).
-    REG starts up, sets V = Converdan P1 voltage before K14 closes.
-    Once K14 closed: BESS recharging begins.
-"""
 from __future__ import annotations
 
 import enum
