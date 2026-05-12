@@ -72,10 +72,6 @@ class SystemState:
 
     # Derived convenience
     @property
-    def battery_soc_in_range(self) -> bool:
-        return config.BATTERY_SOC_MIN <= self.battery_soc <= config.BATTERY_SOC_MAX
-
-    @property
     def ev_sessions_active(self) -> bool:
         return self.infypower_charger_charging or self.winline_charger_charging
 
