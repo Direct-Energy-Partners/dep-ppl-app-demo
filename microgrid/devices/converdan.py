@@ -2,8 +2,8 @@
 DC-DC Converter device abstraction - wraps the Converdan converter.
 
 Operates only in DC Transformer mode (mode 5).
-Variable ratio ≈1.058 to keep DC bus within ~735–769 VDC.
-Max output between 675–850 VDC.
+Variable ratio ≈1.058 to keep DC bus within ~735-769 VDC.
+Max output between 675-850 VDC.
 
 Registers:
   control.transformer.ratio

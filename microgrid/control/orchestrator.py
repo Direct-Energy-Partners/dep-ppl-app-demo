@@ -380,7 +380,7 @@ class Orchestrator:
         # REG output voltage
         reg_out_v = self.rectifier.port2_voltage
 
-        # AC grid availability - determined by Phoenix Contact AC meter (all three phases 216–253 V)
+        # AC grid availability - determined by Phoenix Contact AC meter (all three phases 216-253 V)
         ac_grid_available = self.ac_meter.ac_available
 
         prot_flags = self.protection.evaluate(

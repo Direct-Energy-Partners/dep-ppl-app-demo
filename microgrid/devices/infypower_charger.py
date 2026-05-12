@@ -23,23 +23,27 @@ class InfypowerCharger(Device):
     # -- measurements ---------------------------------------------------------
 
     @property
-    def charger_status(self) -> str | None:
-        return self.read("measure.charger.status")
+    def connector_status(self, connector_id: int) -> str | None:
+        return self.read(f"connector.{connector_id}.charging.status")
 
     @property
     def is_charging(self) -> bool:
-        return self.charger_status == "Charging"
+        return self.connector_status(1) == "charging" or self.connector_status(2) == "charging"
 
     @property
     def total_power(self) -> float:
-        """Measured charger output power (kW)."""
-        return self.read_float("measure.charger.power")
+        return self.read_float("measure.ports.port1.power")
 
     # -- commands -------------------------------------------------------------
-    # NOTE: register paths are assumed; update when clarified.
+
+    def enable_charger(self) -> None:
+        self.write({"control.charger": "on"})
+
+    def disable_charger(self) -> None:
+        self.write({"control.charger": "off"})
 
     def set_power(self, power_w: float) -> None:
-        power_w = max(0.0, min(power_w, self.power_max_w))
+        power_w = min(power_w, self.power_max_w)
         self.write({"control.ports.port1.power.limit.static": power_w})
 
     def disable(self) -> None:

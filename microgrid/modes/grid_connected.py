@@ -9,7 +9,7 @@ States:
                         REG I-limit = 0A (voltage follower only).
                         Converdan enabled at fixed ratio 1.058.
                         K11, K13 closed. REG at DC bus voltage.
-                        SOC 20–80%, nominal operating range.
+                        SOC 20-80%, nominal operating range.
 
   BESS_SOLE_SUPPLY    - EV chargers active, BESS can cover demand.
                         Converdan enabled at ratio 1.058.

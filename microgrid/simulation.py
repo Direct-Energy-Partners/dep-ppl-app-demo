@@ -214,7 +214,7 @@ def main() -> None:
         infypower_charging=True,
     )
     run_scenario(
-        "5–7. BESS SOC low, transition to grid sole supply",
+        "5-7. BESS SOC low, transition to grid sole supply",
         soc=18,
         winline_charging=True,
         infypower_charging=True,
