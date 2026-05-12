@@ -476,30 +476,26 @@ class Orchestrator:
         """
         cmds = output.procedure_commands
 
-        # -- One-shot contactor / session commands (procedure steps only) -----
         if cmds.get("battery_close_contactor"):
             self.battery.close_contactor()
 
-        if cmds.get("battery_open_contactor") or cmds.get("open_k4"):
-            self.battery.open_contactor()
-
         if cmds.get("close_k3"):
-            self.converdan.write({"control.contactor.k3": "close"})
+            self.k3.close()
 
         if cmds.get("open_k3"):
-            self.converdan.write({"control.contactor.k3": "open"})
+            self.k3.open()
 
         if cmds.get("close_k1"):
-            self.rectifier.write({"control.contactor.k1": "close"})
+            self.k1.close()
 
         if cmds.get("open_k1"):
-            self.rectifier.write({"control.contactor.k1": "open"})
+            self.k1.open()
 
         if cmds.get("open_k11"):
-            self.infypower_charger.disable()
+            self.k11.open()
 
         if cmds.get("open_k13"):
-            self.winline.disable()
+            self.k13.open()
 
         # -- Converdan --------------------------------------------------------
         if output.converdan_enabled:

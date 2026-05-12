@@ -18,3 +18,9 @@ class Contactor(Device):
     @property
     def is_open(self) -> bool:
         return self.read("measure.contactor.main") == "0"
+
+    def close(self) -> None:
+        self.write({"control.contactor.main": "1"})
+
+    def open(self) -> None:
+        self.write({"control.contactor.main": "0"})
