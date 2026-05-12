@@ -18,7 +18,7 @@ class InfypowerCharger(Device):
 
     def __init__(self, app):
         super().__init__(app, config.INFYPOWER_CHARGER_ID)
-        self.power_max_kw = config.INFYPOWER_CHARGER_POWER_MAX
+        self.power_max_w = config.INFYPOWER_CHARGER_POWER_MAX_W
 
     # -- measurements ---------------------------------------------------------
 
@@ -38,9 +38,9 @@ class InfypowerCharger(Device):
     # -- commands -------------------------------------------------------------
     # NOTE: register paths are assumed; update when clarified.
 
-    def set_power(self, power_kw: float) -> None:
-        power_kw = max(0.0, min(power_kw, self.power_max_kw))
-        self.write({"control.ports.port1.power.limit.static": power_kw})
+    def set_power(self, power_w: float) -> None:
+        power_w = max(0.0, min(power_w, self.power_max_w))
+        self.write({"control.ports.port1.power.limit.static": power_w})
 
     def disable(self) -> None:
         self.set_power(0)

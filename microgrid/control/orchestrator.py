@@ -72,8 +72,8 @@ class SystemState:
     ev_contactors_closed: bool = False
 
     # Previous-cycle setpoints (for ramping)
-    prev_infypower_charger_kw: float = 0.0
-    prev_winline_charger_kw: float = 0.0
+    prev_infypower_charger_w: float = 0.0
+    prev_winline_charger_w: float = 0.0
     prev_rectifier_current: float = 0.0
 
     # Protection
@@ -89,13 +89,13 @@ class SystemState:
         return self.infypower_charger_charging or self.winline_charger_charging
 
     @property
-    def battery_available_power_kw(self) -> float:
-        return self.battery_limits.max_discharge_power_w / 1000.0
+    def battery_available_power_w(self) -> float:
+        return self.battery_limits.max_discharge_power_w
 
     @property
-    def ev_demand_kw(self) -> float:
+    def ev_demand_w(self) -> float:
         """Approximate current EV demand from previous setpoints."""
-        return self.prev_infypower_charger_kw + self.prev_winline_charger_kw
+        return self.prev_infypower_charger_w + self.prev_winline_charger_w
 
     @property
     def bus_live(self) -> bool:
@@ -147,8 +147,8 @@ class Orchestrator:
         self.proc_e = ProcedureConverdanReconnect()
 
         # Persistent state across ticks
-        self._prev_infypower_kw: float = 0.0
-        self._prev_winline_kw: float = 0.0
+        self._prev_infypower_w: float = 0.0
+        self._prev_winline_w: float = 0.0
         self._prev_rectifier_current: float = 0.0
 
     # --------------------------------------------------------------------- #
@@ -182,8 +182,8 @@ class Orchestrator:
         self._apply_output(output)
 
         # --- Store setpoints for ramping ---
-        self._prev_infypower_kw = output.infypower_charger_power_kw
-        self._prev_winline_kw = output.winline_charger_power_kw
+        self._prev_infypower_w = output.infypower_charger_power_w
+        self._prev_winline_w = output.winline_charger_power_w
         self._prev_rectifier_current = output.rectifier_current_limit
 
         d1_mode = self.d1.mode.value
@@ -191,8 +191,8 @@ class Orchestrator:
         summary = (
             f"[D1:{d1_mode}|{sub_state}] {output.description} | "
             f"SOC={state.battery_soc:.1f}% BusV={state.dc_bus_voltage:.0f}V "
-            f"Infy={output.infypower_charger_power_kw:.0f}kW "
-            f"Win={output.winline_charger_power_kw:.0f}kW "
+            f"Infy={output.infypower_charger_power_w/1000:.0f}kW "
+            f"Win={output.winline_charger_power_w/1000:.0f}kW "
             f"REG_I={output.rectifier_current_limit:.0f}A"
         )
         return summary
@@ -262,11 +262,11 @@ class Orchestrator:
             rectifier_enabled=commands.get("reg_enable", False),
             rectifier_voltage=commands.get("reg_voltage", 0),
             rectifier_current_limit=commands.get("reg_current", 0),
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description=f"BATTERY_BLACKSTART - {self.proc_a.state.description}",
         )
 
@@ -291,11 +291,11 @@ class Orchestrator:
             rectifier_enabled=commands.get("reg_enable", False),
             rectifier_voltage=commands.get("reg_voltage", 750.0),
             rectifier_current_limit=commands.get("reg_current", 0),
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description=f"GRID_BLACKSTART - {self.proc_b.state.description}",
         )
 
@@ -307,25 +307,25 @@ class Orchestrator:
             battery_voltage=state.battery_voltage,
             dc_bus_voltage=state.dc_bus_voltage,
             ev_sessions_active=state.ev_sessions_active,
-            ev_demand_kw=state.ev_demand_kw,
-            battery_available_power_kw=state.battery_available_power_kw,
+            ev_demand_w=state.ev_demand_w,
+            battery_available_power_w=state.battery_available_power_w,
             prev_reg_current=self._prev_rectifier_current,
-            prev_infy_kw=self._prev_infypower_kw,
-            prev_winline_kw=self._prev_winline_kw,
+            prev_infy_w=self._prev_infypower_w,
+            prev_winline_w=self._prev_winline_w,
         )
 
     def _run_islanded(self, state: SystemState) -> ModeOutput:
         """D3 sub-FSM - Islanded mode."""
         output = self.d3.evaluate(
             battery_soc=state.battery_soc,
-            battery_available_power_kw=state.battery_available_power_kw,
+            battery_available_power_w=state.battery_available_power_w,
             battery_voltage=state.battery_voltage,
             dc_bus_voltage=state.dc_bus_voltage,
             ev_sessions_active=state.ev_sessions_active,
-            ev_demand_kw=state.ev_demand_kw,
+            ev_demand_w=state.ev_demand_w,
             ac_grid_available=state.ac_grid_available,
-            prev_infy_kw=self._prev_infypower_kw,
-            prev_winline_kw=self._prev_winline_kw,
+            prev_infy_w=self._prev_infypower_w,
+            prev_winline_w=self._prev_winline_w,
         )
 
         # Check if D3 signals grid restore complete → D1 handles transition
@@ -341,8 +341,8 @@ class Orchestrator:
             self.proc_d.start()
 
         commands = self.proc_d.advance(
-            prev_infy_kw=self._prev_infypower_kw,
-            prev_winline_kw=self._prev_winline_kw,
+            prev_infy_w=self._prev_infypower_w,
+            prev_winline_w=self._prev_winline_w,
             charger_output_zero=(
                 self.infypower_charger.total_power <= 0
                 and self.winline.total_power <= 0
@@ -357,11 +357,11 @@ class Orchestrator:
             rectifier_enabled=not commands.get("reg_disable", False),
             rectifier_voltage=state.dc_bus_voltage,
             rectifier_current_limit=commands.get("reg_current", 0),
-            infypower_charger_power_kw=commands.get("infy_charger_kw", 0),
-            winline_charger_power_kw=commands.get("winline_charger_kw", 0),
+            infypower_charger_power_w=commands.get("infy_charger_w", 0),
+            winline_charger_power_w=commands.get("winline_charger_w", 0),
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description=f"PLANNED_SHUTDOWN - {self.proc_d.state.description}",
         )
 
@@ -373,11 +373,11 @@ class Orchestrator:
         return ModeOutput(
             converdan_enabled=False,
             rectifier_enabled=False,
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description="POWERED_OFF - all devices idle, PLC on UPS",
         )
 
@@ -386,11 +386,11 @@ class Orchestrator:
         return ModeOutput(
             converdan_enabled=False,
             rectifier_enabled=False,
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description=f"FAULT - {reasons}. Operator reset required.",
         )
 
@@ -398,11 +398,11 @@ class Orchestrator:
         return ModeOutput(
             converdan_enabled=False,
             rectifier_enabled=False,
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description="Safe mode - all devices disabled",
         )
 
@@ -458,8 +458,8 @@ class Orchestrator:
             infypower_charger_charging=self.infypower_charger.is_charging,
             winline_charger_charging=self.winline.is_charging,
             ev_contactors_closed=self.k11.is_closed and self.k13.is_closed,
-            prev_infypower_charger_kw=self._prev_infypower_kw,
-            prev_winline_charger_kw=self._prev_winline_kw,
+            prev_infypower_charger_w=self._prev_infypower_w,
+            prev_winline_charger_w=self._prev_winline_w,
             prev_rectifier_current=self._prev_rectifier_current,
             protection=prot_flags,
         )
@@ -481,8 +481,8 @@ class Orchestrator:
 
         # --- Charging suspended (bus undervoltage with hysteresis) ------------
         if prot.charging_suspended:
-            output.infypower_charger_power_kw = 0
-            output.winline_charger_power_kw = 0
+            output.infypower_charger_power_w = 0
+            output.winline_charger_power_w = 0
             output.infypower_charger_status = "idle"
             output.winline_charger_status = "idle"
             output.description += " [charging suspended]"
@@ -490,8 +490,8 @@ class Orchestrator:
         # --- BESS critical SOC - curtail everything --------------------------
         if prot.battery_soc_critical_low or prot.battery_soc_critical_high:
             output.converdan_enabled = False
-            output.infypower_charger_power_kw = 0
-            output.winline_charger_power_kw = 0
+            output.infypower_charger_power_w = 0
+            output.winline_charger_power_w = 0
             output.infypower_charger_status = "idle"
             output.winline_charger_status = "idle"
             output.description += " [BESS SOC critical]"
@@ -502,12 +502,11 @@ class Orchestrator:
                 output.rectifier_current_limit,
                 config.AC_OVERCURRENT_THRESHOLD,
             )
-            max_charger_kw = config.AC_OVERCURRENT_POWER_LIMIT / 1000
-            total = output.infypower_charger_power_kw + output.winline_charger_power_kw
-            if total > max_charger_kw and total > 0:
-                scale = max_charger_kw / total
-                output.infypower_charger_power_kw *= scale
-                output.winline_charger_power_kw *= scale
+            total = output.infypower_charger_power_w + output.winline_charger_power_w
+            if total > config.AC_OVERCURRENT_POWER_LIMIT and total > 0:
+                scale = config.AC_OVERCURRENT_POWER_LIMIT / total
+                output.infypower_charger_power_w *= scale
+                output.winline_charger_power_w *= scale
             output.description += " [AC overcurrent curtail]"
 
         # --- Equipment fault - disable Converdan -----------------------------
@@ -586,13 +585,13 @@ class Orchestrator:
 
         # -- Winline EV charger -----------------------------------------------
         if output.winline_charger_status == "Charging":
-            self.winline.set_total_power(output.winline_charger_power_kw)
+            self.winline.set_total_power(output.winline_charger_power_w)
         else:
             self.winline.disable()
 
         # -- Infypower EV charger ---------------------------------------------
         if output.infypower_charger_status == "Charging":
-            self.infypower_charger.set_power(output.infypower_charger_power_kw)
+            self.infypower_charger.set_power(output.infypower_charger_power_w)
         else:
             self.infypower_charger.disable()
 
@@ -607,6 +606,7 @@ class Orchestrator:
             and state.prev_rectifier_current <= 0
             and self.proc_d.is_complete
         )
+
 
     def _get_sub_state_name(self) -> str:
         """Get the current sub-state name for logging."""

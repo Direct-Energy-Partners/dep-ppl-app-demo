@@ -74,15 +74,15 @@ AC_OVERCURRENT_POWER_LIMIT = 60000  # W - combined charger power limit during ov
 # EV Chargers
 # =============================================================================
 CHARGER_POWER_DERATING = 0.90  # Total EV charger power <= (P_available) * 90%
-CHARGER_RAMP_STEP_KW = 1       # kW - ramp step for charger setpoint changes (1 kW/s)
+CHARGER_RAMP_STEP_W = 1000     # W - ramp step for charger setpoint changes (1 kW/s)
 
 # Winline charger limits (from operating scenarios)
-WINLINE_POWER_MAX = 80   # kW
+WINLINE_POWER_MAX_W = 80000   # W
 # Infypower charger limits (from operating scenarios)
-INFYPOWER_CHARGER_POWER_MAX = 60  # kW
+INFYPOWER_CHARGER_POWER_MAX_W = 60000  # W
 # Combined charger maximums per D2/D3
-CHARGER_COMBINED_MAX_ISLANDED = 80  # kW - max combined when islanded (40 kW each if both)
-CHARGER_COMBINED_MAX_GRID = 120     # kW - max combined when grid connected (Infy 60 + Winline 80)
+CHARGER_COMBINED_MAX_ISLANDED_W = 80000  # W - max combined when islanded (40 kW each if both)
+CHARGER_COMBINED_MAX_GRID_W = 120000     # W - max combined when grid connected (Infy 60 + Winline 80)
 # EV setpoints: Infy 60kW, Winline 80kW (BESS sole supply)
 # EV setpoints: Infy 60kW + Winline 120kW (BESS+grid shared, but limited by REG I-limit)
 
@@ -104,9 +104,9 @@ REG_CAN_WALK_IN_S = 5  # seconds - REG CAN 0x13 cmd sets walk-in; factory defaul
 # =============================================================================
 # Converdan Ramp
 # =============================================================================
-CONVERDAN_RECONNECT_RAMP_KW_PER_STEP = 1  # kW per control loop step
-RECTIFIER_RECHARGE_RAMP_A_PER_STEP = 5    # A per control loop step for BESS recharge via grid
-CONVERDAN_RECHARGE_POWER_KW = 30  # kW - BESS charges at ~30 kW via grid (Proc E)
+CONVERDAN_RECONNECT_RAMP_W_PER_STEP = 1000  # W per control loop step
+RECTIFIER_RECHARGE_RAMP_A_PER_STEP = 5      # A per control loop step for BESS recharge via grid
+CONVERDAN_RECHARGE_POWER_W = 30000  # W - BESS charges at ~30 kW via grid (Proc E)
 
 # =============================================================================
 # AC Grid Detection (Phoenix Contact meter)

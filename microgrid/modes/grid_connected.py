@@ -77,8 +77,8 @@ class GCContext:
     state: GCState = GCState.GC_STANDBY
     state_entry_time: float = field(default_factory=time.time)
     prev_reg_current: float = 0.0
-    prev_infy_kw: float = 0.0
-    prev_winline_kw: float = 0.0
+    prev_infy_w: float = 0.0
+    prev_winline_w: float = 0.0
     recharge_voltage_delta: float = 0.0
 
     def transition_to(self, new_state: GCState, reason: str = "") -> None:
@@ -115,27 +115,27 @@ class GridConnectedFSM:
         battery_voltage: float,
         dc_bus_voltage: float,
         ev_sessions_active: bool,
-        ev_demand_kw: float,
-        battery_available_power_kw: float,
+        ev_demand_w: float,
+        battery_available_power_w: float,
         prev_reg_current: float,
-        prev_infy_kw: float,
-        prev_winline_kw: float,
+        prev_infy_w: float,
+        prev_winline_w: float,
     ) -> ModeOutput:
         """Evaluate D2 state transitions and produce setpoints."""
         self.ctx.prev_reg_current = prev_reg_current
-        self.ctx.prev_infy_kw = prev_infy_kw
-        self.ctx.prev_winline_kw = prev_winline_kw
+        self.ctx.prev_infy_w = prev_infy_w
+        self.ctx.prev_winline_w = prev_winline_w
 
         # --- Evaluate transitions ---
         self._evaluate_transitions(
             battery_soc, battery_available, ev_sessions_active,
-            ev_demand_kw, battery_available_power_kw,
+            ev_demand_w, battery_available_power_w,
         )
 
         # --- Compute output for current state ---
         return self._compute_output(
             battery_soc, battery_voltage, dc_bus_voltage,
-            ev_sessions_active, ev_demand_kw, battery_available_power_kw,
+            ev_sessions_active, ev_demand_w, battery_available_power_w,
         )
 
     def _evaluate_transitions(
@@ -143,15 +143,15 @@ class GridConnectedFSM:
         battery_soc: float,
         battery_available: bool,
         ev_sessions_active: bool,
-        ev_demand_kw: float,
-        battery_available_power_kw: float,
+        ev_demand_w: float,
+        battery_available_power_w: float,
     ) -> None:
         state = self.ctx.state
 
         if state == GCState.GC_STANDBY:
             # EV session starts (vehicle connected, BESS SOC > 20%)
             if ev_sessions_active and battery_soc > config.BATTERY_SOC_MIN:
-                if ev_demand_kw <= battery_available_power_kw:
+                if ev_demand_w <= battery_available_power_w:
                     self.ctx.transition_to(GCState.BATTERY_SOLE_SUPPLY, "EV session started, BESS can cover")
                 else:
                     self.ctx.transition_to(GCState.BATTERY_GRID_SHARED, "EV session started, demand > BESS")
@@ -161,7 +161,7 @@ class GridConnectedFSM:
 
         elif state == GCState.BATTERY_SOLE_SUPPLY:
             # EV demand exceeds BESS available → shared
-            if ev_demand_kw > battery_available_power_kw:
+            if ev_demand_w > battery_available_power_w:
                 self.ctx.transition_to(GCState.BATTERY_GRID_SHARED, "EV demand > BESS available power")
             # All EV sessions ended
             elif not ev_sessions_active:
@@ -172,7 +172,7 @@ class GridConnectedFSM:
 
         elif state == GCState.BATTERY_GRID_SHARED:
             # EV demand drops back to within BESS capacity
-            if ev_sessions_active and ev_demand_kw <= battery_available_power_kw:
+            if ev_sessions_active and ev_demand_w <= battery_available_power_w:
                 self.ctx.transition_to(GCState.BATTERY_SOLE_SUPPLY, "EV demand ≤ BESS available")
             # All EV sessions ended
             elif not ev_sessions_active:
@@ -184,7 +184,7 @@ class GridConnectedFSM:
         elif state == GCState.BATTERY_LOW_SOC_HOLD:
             # Converdan disabled, transition complete → GRID_SOLE_SUPPLY
             # We detect "complete" when chargers have ramped down and time allows K3 to open
-            if self.ctx.prev_infy_kw <= 0 and self.ctx.prev_winline_kw <= 0:
+            if self.ctx.prev_infy_w <= 0 and self.ctx.prev_winline_w <= 0:
                 self.ctx.transition_to(GCState.GRID_SOLE_SUPPLY, "Converdan disabled, transition complete")
 
         elif state == GCState.GRID_SOLE_SUPPLY:
@@ -207,21 +207,21 @@ class GridConnectedFSM:
         battery_voltage: float,
         dc_bus_voltage: float,
         ev_sessions_active: bool,
-        ev_demand_kw: float,
-        battery_available_power_kw: float,
+        ev_demand_w: float,
+        battery_available_power_w: float,
     ) -> ModeOutput:
         state = self.ctx.state
 
         if state == GCState.GC_STANDBY:
             return self._output_gc_standby(dc_bus_voltage)
         elif state == GCState.BATTERY_SOLE_SUPPLY:
-            return self._output_battery_sole_supply(dc_bus_voltage, battery_available_power_kw, ev_demand_kw)
+            return self._output_battery_sole_supply(dc_bus_voltage, battery_available_power_w, ev_demand_w)
         elif state == GCState.BATTERY_GRID_SHARED:
-            return self._output_battery_grid_shared(dc_bus_voltage, battery_available_power_kw, ev_demand_kw)
+            return self._output_battery_grid_shared(dc_bus_voltage, battery_available_power_w, ev_demand_w)
         elif state == GCState.BATTERY_LOW_SOC_HOLD:
             return self._output_battery_low_soc_hold(dc_bus_voltage)
         elif state == GCState.GRID_SOLE_SUPPLY:
-            return self._output_grid_sole_supply(dc_bus_voltage, ev_demand_kw)
+            return self._output_grid_sole_supply(dc_bus_voltage, ev_demand_w)
         elif state == GCState.BATTERY_RECHARGING:
             return self._output_battery_recharging(battery_voltage, dc_bus_voltage)
         # Fallback
@@ -236,21 +236,21 @@ class GridConnectedFSM:
             rectifier_enabled=True,
             rectifier_voltage=bus_v + config.RECTIFIER_VOLTAGE_SETPOINT_OFFSET,
             rectifier_current_limit=0,
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description="GC_STANDBY - bus live, no EV sessions, REG I-limit=0A",
         )
 
     def _output_battery_sole_supply(
-        self, bus_v: float, battery_available_kw: float, ev_demand_kw: float
+        self, bus_v: float, battery_available_w: float, ev_demand_w: float
     ) -> ModeOutput:
         # BESS can cover demand; REG I-limit = 0A (voltage follower only)
-        max_total = battery_available_kw * config.CHARGER_POWER_DERATING
-        infy_kw = min(config.INFYPOWER_CHARGER_POWER_MAX, max_total * 0.43)  # ~60/(60+80)
-        winline_kw = min(config.WINLINE_POWER_MAX, max_total - infy_kw)
+        max_total = battery_available_w * config.CHARGER_POWER_DERATING
+        infy_w = min(config.INFYPOWER_CHARGER_POWER_MAX_W, max_total * 0.43)  # ~60/(60+80)
+        winline_w = min(config.WINLINE_POWER_MAX_W, max_total - infy_w)
 
         return ModeOutput(
             converdan_enabled=True,
@@ -258,16 +258,16 @@ class GridConnectedFSM:
             rectifier_enabled=True,
             rectifier_voltage=bus_v + config.RECTIFIER_VOLTAGE_SETPOINT_OFFSET,
             rectifier_current_limit=0,
-            infypower_charger_power_kw=infy_kw,
-            winline_charger_power_kw=winline_kw,
+            infypower_charger_power_w=infy_w,
+            winline_charger_power_w=winline_w,
             infypower_charger_status="Charging",
             winline_charger_status="Charging",
-            total_demand_kw=infy_kw + winline_kw,
-            description=f"BESS_SOLE_SUPPLY - Infy {infy_kw:.0f}kW, Win {winline_kw:.0f}kW, REG I=0A",
+            total_demand_w=infy_w + winline_w,
+            description=f"BESS_SOLE_SUPPLY - Infy {infy_w/1000:.0f}kW, Win {winline_w/1000:.0f}kW, REG I=0A",
         )
 
     def _output_battery_grid_shared(
-        self, bus_v: float, battery_available_kw: float, ev_demand_kw: float
+        self, bus_v: float, battery_available_w: float, ev_demand_w: float
     ) -> ModeOutput:
         # EV demand > BESS available; raise REG I-limit to 100A (5s walk-in)
         target_reg_current = config.RECTIFIER_CURRENT_MAX
@@ -278,9 +278,9 @@ class GridConnectedFSM:
         )
 
         # EV setpoints: Infy + Winline up to 120kW combined
-        max_total = min(config.CHARGER_COMBINED_MAX_GRID, ev_demand_kw)
-        infy_kw = min(config.INFYPOWER_CHARGER_POWER_MAX, max_total * 0.5)
-        winline_kw = min(config.WINLINE_POWER_MAX, max_total - infy_kw)
+        max_total = min(config.CHARGER_COMBINED_MAX_GRID_W, ev_demand_w)
+        infy_w = min(config.INFYPOWER_CHARGER_POWER_MAX_W, max_total * 0.5)
+        winline_w = min(config.WINLINE_POWER_MAX_W, max_total - infy_w)
 
         return ModeOutput(
             converdan_enabled=True,
@@ -288,18 +288,18 @@ class GridConnectedFSM:
             rectifier_enabled=True,
             rectifier_voltage=bus_v + config.RECTIFIER_VOLTAGE_SETPOINT_OFFSET,
             rectifier_current_limit=reg_current,
-            infypower_charger_power_kw=infy_kw,
-            winline_charger_power_kw=winline_kw,
+            infypower_charger_power_w=infy_w,
+            winline_charger_power_w=winline_w,
             infypower_charger_status="Charging",
             winline_charger_status="Charging",
-            total_demand_kw=infy_kw + winline_kw,
-            description=f"BESS_GRID_SHARED - Infy {infy_kw:.0f}kW, Win {winline_kw:.0f}kW, REG I={reg_current:.0f}A",
+            total_demand_w=infy_w + winline_w,
+            description=f"BESS_GRID_SHARED - Infy {infy_w/1000:.0f}kW, Win {winline_w/1000:.0f}kW, REG I={reg_current:.0f}A",
         )
 
     def _output_battery_low_soc_hold(self, bus_v: float) -> ModeOutput:
         # Ramp down all charger setpoints at 1kW/s
-        infy_kw = max(0, self.ctx.prev_infy_kw - config.CHARGER_RAMP_STEP_KW)
-        winline_kw = max(0, self.ctx.prev_winline_kw - config.CHARGER_RAMP_STEP_KW)
+        infy_w = max(0, self.ctx.prev_infy_w - config.CHARGER_RAMP_STEP_W)
+        winline_w = max(0, self.ctx.prev_winline_w - config.CHARGER_RAMP_STEP_W)
 
         # Raise REG I-limit → 100A (5s walk-in) before disabling Converdan
         reg_current = min(
@@ -308,7 +308,7 @@ class GridConnectedFSM:
         )
 
         # Keep Converdan enabled until chargers fully ramped down
-        converdan_enabled = (infy_kw + winline_kw) > 0
+        converdan_enabled = (infy_w + winline_w) > 0
 
         return ModeOutput(
             converdan_enabled=converdan_enabled,
@@ -316,18 +316,18 @@ class GridConnectedFSM:
             rectifier_enabled=True,
             rectifier_voltage=bus_v + config.RECTIFIER_VOLTAGE_SETPOINT_OFFSET,
             rectifier_current_limit=reg_current,
-            infypower_charger_power_kw=infy_kw,
-            winline_charger_power_kw=winline_kw,
-            infypower_charger_status="Charging" if infy_kw > 0 else "idle",
-            winline_charger_status="Charging" if winline_kw > 0 else "idle",
-            total_demand_kw=infy_kw + winline_kw,
+            infypower_charger_power_w=infy_w,
+            winline_charger_power_w=winline_w,
+            infypower_charger_status="Charging" if infy_w > 0 else "idle",
+            winline_charger_status="Charging" if winline_w > 0 else "idle",
+            total_demand_w=infy_w + winline_w,
             description=f"BESS_LOW_SOC_HOLD - ramping down, REG I={reg_current:.0f}A",
         )
 
-    def _output_grid_sole_supply(self, bus_v: float, ev_demand_kw: float) -> ModeOutput:
+    def _output_grid_sole_supply(self, bus_v: float, ev_demand_w: float) -> ModeOutput:
         # REG holds DC bus voltage, I-limit = 100A, Converdan disabled (K3 open)
-        infy_kw = min(config.INFYPOWER_CHARGER_POWER_MAX, ev_demand_kw * 0.5) if ev_demand_kw > 0 else 0
-        winline_kw = min(config.WINLINE_POWER_MAX, ev_demand_kw - infy_kw) if ev_demand_kw > 0 else 0
+        infy_w = min(config.INFYPOWER_CHARGER_POWER_MAX_W, ev_demand_w * 0.5) if ev_demand_w > 0 else 0
+        winline_w = min(config.WINLINE_POWER_MAX_W, ev_demand_w - infy_w) if ev_demand_w > 0 else 0
 
         return ModeOutput(
             converdan_enabled=False,
@@ -335,11 +335,11 @@ class GridConnectedFSM:
             rectifier_enabled=True,
             rectifier_voltage=bus_v + config.RECTIFIER_VOLTAGE_SETPOINT_OFFSET,
             rectifier_current_limit=config.RECTIFIER_CURRENT_MAX,
-            infypower_charger_power_kw=infy_kw,
-            winline_charger_power_kw=winline_kw,
-            infypower_charger_status="Charging" if infy_kw > 0 else "idle",
-            winline_charger_status="Charging" if winline_kw > 0 else "idle",
-            total_demand_kw=infy_kw + winline_kw,
+            infypower_charger_power_w=infy_w,
+            winline_charger_power_w=winline_w,
+            infypower_charger_status="Charging" if infy_w > 0 else "idle",
+            winline_charger_status="Charging" if winline_w > 0 else "idle",
+            total_demand_w=infy_w + winline_w,
             description=f"GRID_SOLE_SUPPLY - REG I=100A, Converdan off, SOC≤20%",
         )
 
@@ -359,10 +359,10 @@ class GridConnectedFSM:
             rectifier_enabled=True,
             rectifier_voltage=reg_voltage,
             rectifier_current_limit=config.RECTIFIER_CURRENT_MAX,
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description=f"BESS_RECHARGING - REG V={reg_voltage:.0f}V, ΔV={self.ctx.recharge_voltage_delta:.0f}V",
         )

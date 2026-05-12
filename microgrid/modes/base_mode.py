@@ -23,11 +23,11 @@ class ModeOutput:
     rectifier_enabled: bool = False
     rectifier_voltage: float = 0.0
     rectifier_current_limit: float = 0.0
-    infypower_charger_power_kw: float = 0.0
-    winline_charger_power_kw: float = 0.0
+    infypower_charger_power_w: float = 0.0
+    winline_charger_power_w: float = 0.0
     infypower_charger_status: str = "idle"    # "idle" | "Charging"
     winline_charger_status: str = "idle"       # "idle" | "Charging"
-    total_demand_kw: float = 0.0
+    total_demand_w: float = 0.0
     description: str = ""
 
 

@@ -70,8 +70,8 @@ class ISLContext:
     """Persistent state for the D3 sub-FSM."""
     state: ISLState = ISLState.ISL_STANDBY
     state_entry_time: float = field(default_factory=time.time)
-    prev_infy_kw: float = 0.0
-    prev_winline_kw: float = 0.0
+    prev_infy_w: float = 0.0
+    prev_winline_w: float = 0.0
     grid_stable_since: float = 0.0
     grid_restore_voltage_matched: bool = False
 
@@ -118,26 +118,26 @@ class IslandedFSM:
     def evaluate(
         self,
         battery_soc: float,
-        battery_available_power_kw: float,
+        battery_available_power_w: float,
         battery_voltage: float,
         dc_bus_voltage: float,
         ev_sessions_active: bool,
-        ev_demand_kw: float,
+        ev_demand_w: float,
         ac_grid_available: bool,
-        prev_infy_kw: float,
-        prev_winline_kw: float,
+        prev_infy_w: float,
+        prev_winline_w: float,
     ) -> ModeOutput:
         """Evaluate D3 state transitions and produce setpoints."""
-        self.ctx.prev_infy_kw = prev_infy_kw
-        self.ctx.prev_winline_kw = prev_winline_kw
+        self.ctx.prev_infy_w = prev_infy_w
+        self.ctx.prev_winline_w = prev_winline_w
 
         self._evaluate_transitions(
             battery_soc, ev_sessions_active, ac_grid_available,
         )
 
         return self._compute_output(
-            battery_soc, battery_available_power_kw, battery_voltage,
-            dc_bus_voltage, ev_demand_kw,
+            battery_soc, battery_available_power_w, battery_voltage,
+            dc_bus_voltage, ev_demand_w,
         )
 
     def _evaluate_transitions(
@@ -179,7 +179,7 @@ class IslandedFSM:
         elif state == ISLState.ISL_SOC_LOW:
             # SOC ≤ 20% and charger setpoints = 0 → suspended
             if battery_soc <= config.BATTERY_SOC_MIN:
-                if self.ctx.prev_infy_kw <= 0 and self.ctx.prev_winline_kw <= 0:
+                if self.ctx.prev_infy_w <= 0 and self.ctx.prev_winline_w <= 0:
                     self.ctx.transition_to(ISLState.ISL_CHARGERS_SUSPENDED, "SOC ≤ 20%, chargers off")
             # SOC ≤ 10% → critical (hard limit → D1 FAULT)
             if battery_soc <= config.BATTERY_SOC_CRITICAL_LOW:
@@ -202,10 +202,10 @@ class IslandedFSM:
     def _compute_output(
         self,
         battery_soc: float,
-        battery_available_power_kw: float,
+        battery_available_power_w: float,
         battery_voltage: float,
         dc_bus_voltage: float,
-        ev_demand_kw: float,
+        ev_demand_w: float,
     ) -> ModeOutput:
         state = self.ctx.state
         bus_v = dc_bus_voltage if dc_bus_voltage > 0 else battery_voltage * config.CONVERDAN_RATIO_NOMINAL
@@ -213,7 +213,7 @@ class IslandedFSM:
         if state == ISLState.ISL_STANDBY:
             return self._output_isl_standby(bus_v)
         elif state == ISLState.ISL_EV_CHARGING:
-            return self._output_isl_ev_charging(bus_v, battery_available_power_kw, ev_demand_kw)
+            return self._output_isl_ev_charging(bus_v, battery_available_power_w, ev_demand_w)
         elif state == ISLState.ISL_SOC_LOW:
             return self._output_isl_soc_low(bus_v)
         elif state == ISLState.ISL_CHARGERS_SUSPENDED:
@@ -233,31 +233,31 @@ class IslandedFSM:
             rectifier_enabled=False,
             rectifier_voltage=0,
             rectifier_current_limit=0,
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description="ISL_STANDBY - BESS + Converdan, no EV, REG offline",
         )
 
     def _output_isl_ev_charging(
-        self, bus_v: float, battery_available_kw: float, ev_demand_kw: float
+        self, bus_v: float, battery_available_w: float, ev_demand_w: float
     ) -> ModeOutput:
         # Total setpoints ≤ P_BESS_available × 90%
         max_total = min(
-            config.CHARGER_COMBINED_MAX_ISLANDED,
-            battery_available_kw * config.CHARGER_POWER_DERATING,
+            config.CHARGER_COMBINED_MAX_ISLANDED_W,
+            battery_available_w * config.CHARGER_POWER_DERATING,
         )
         # Max 40kW each when both active
         max_per_charger = max_total / 2.0
-        infy_kw = min(max_per_charger, config.INFYPOWER_CHARGER_POWER_MAX)
-        winline_kw = min(max_per_charger, config.WINLINE_POWER_MAX)
+        infy_w = min(max_per_charger, config.INFYPOWER_CHARGER_POWER_MAX_W)
+        winline_w = min(max_per_charger, config.WINLINE_POWER_MAX_W)
         # Ensure total doesn't exceed limit
-        if infy_kw + winline_kw > max_total:
-            scale = max_total / (infy_kw + winline_kw)
-            infy_kw *= scale
-            winline_kw *= scale
+        if infy_w + winline_w > max_total:
+            scale = max_total / (infy_w + winline_w)
+            infy_w *= scale
+            winline_w *= scale
 
         return ModeOutput(
             converdan_enabled=True,
@@ -265,18 +265,18 @@ class IslandedFSM:
             rectifier_enabled=False,
             rectifier_voltage=0,
             rectifier_current_limit=0,
-            infypower_charger_power_kw=infy_kw,
-            winline_charger_power_kw=winline_kw,
+            infypower_charger_power_w=infy_w,
+            winline_charger_power_w=winline_w,
             infypower_charger_status="Charging",
             winline_charger_status="Charging",
-            total_demand_kw=infy_kw + winline_kw,
-            description=f"ISL_EV_CHARGING - Infy {infy_kw:.0f}kW, Win {winline_kw:.0f}kW (BESS sole)",
+            total_demand_w=infy_w + winline_w,
+            description=f"ISL_EV_CHARGING - Infy {infy_w/1000:.0f}kW, Win {winline_w/1000:.0f}kW (BESS sole)",
         )
 
     def _output_isl_soc_low(self, bus_v: float) -> ModeOutput:
         # Ramp down all charger setpoints at 1kW/s
-        infy_kw = max(0, self.ctx.prev_infy_kw - config.CHARGER_RAMP_STEP_KW)
-        winline_kw = max(0, self.ctx.prev_winline_kw - config.CHARGER_RAMP_STEP_KW)
+        infy_w = max(0, self.ctx.prev_infy_w - config.CHARGER_RAMP_STEP_W)
+        winline_w = max(0, self.ctx.prev_winline_w - config.CHARGER_RAMP_STEP_W)
 
         return ModeOutput(
             converdan_enabled=True,
@@ -284,12 +284,12 @@ class IslandedFSM:
             rectifier_enabled=False,
             rectifier_voltage=0,
             rectifier_current_limit=0,
-            infypower_charger_power_kw=infy_kw,
-            winline_charger_power_kw=winline_kw,
-            infypower_charger_status="Charging" if infy_kw > 0 else "idle",
-            winline_charger_status="Charging" if winline_kw > 0 else "idle",
-            total_demand_kw=infy_kw + winline_kw,
-            description=f"ISL_SOC_LOW - ramping down, Infy {infy_kw:.0f}kW, Win {winline_kw:.0f}kW",
+            infypower_charger_power_w=infy_w,
+            winline_charger_power_w=winline_w,
+            infypower_charger_status="Charging" if infy_w > 0 else "idle",
+            winline_charger_status="Charging" if winline_w > 0 else "idle",
+            total_demand_w=infy_w + winline_w,
+            description=f"ISL_SOC_LOW - ramping down, Infy {infy_w/1000:.0f}kW, Win {winline_w/1000:.0f}kW",
         )
 
     def _output_isl_chargers_suspended(self, bus_v: float) -> ModeOutput:
@@ -299,11 +299,11 @@ class IslandedFSM:
             rectifier_enabled=False,
             rectifier_voltage=0,
             rectifier_current_limit=0,
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description="ISL_CHARGERS_SUSPENDED - SOC≤20%, all EV stopped, awaiting grid",
         )
 
@@ -315,11 +315,11 @@ class IslandedFSM:
             rectifier_enabled=False,
             rectifier_voltage=0,
             rectifier_current_limit=0,
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description="ISL_CRITICAL_SOC - SOC≤10%, Converdan off, bus collapsed",
         )
 
@@ -335,10 +335,10 @@ class IslandedFSM:
             rectifier_enabled=True,
             rectifier_voltage=reg_voltage,
             rectifier_current_limit=0,  # K14 not yet closed; will ramp after match
-            infypower_charger_power_kw=0,
-            winline_charger_power_kw=0,
+            infypower_charger_power_w=0,
+            winline_charger_power_w=0,
             infypower_charger_status="idle",
             winline_charger_status="idle",
-            total_demand_kw=0,
+            total_demand_w=0,
             description=f"GRID_RESTORE_PENDING - REG V={reg_voltage:.0f}V matching bus, K14 pending",
         )

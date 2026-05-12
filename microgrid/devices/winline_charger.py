@@ -18,7 +18,7 @@ class WinlineCharger(Device):
 
     def __init__(self, app):
         super().__init__(app, config.WINLINE_CHARGER_ID)
-        self.power_max_kw = config.WINLINE_POWER_MAX
+        self.power_max_w = config.WINLINE_POWER_MAX_W
 
     # -- measurements ---------------------------------------------------------
 
@@ -48,17 +48,17 @@ class WinlineCharger(Device):
 
     # -- commands -------------------------------------------------------------
 
-    def set_gun_a_power(self, power_kw: float) -> None:
-        power_kw = max(0.0, min(power_kw, self.power_max_kw))
-        self.write({"control.gunA.power": round(power_kw, 1)})
+    def set_gun_a_power(self, power_w: float) -> None:
+        power_w = max(0.0, min(power_w, self.power_max_w))
+        self.write({"control.gunA.power": power_w})
 
-    def set_gun_b_power(self, power_kw: float) -> None:
-        power_kw = max(0.0, min(power_kw, self.power_max_kw))
-        self.write({"control.gunB.power": round(power_kw, 1)})
+    def set_gun_b_power(self, power_w: float) -> None:
+        power_w = max(0.0, min(power_w, self.power_max_w))
+        self.write({"control.gunB.power": power_w})
 
-    def set_total_power(self, power_kw: float) -> None:
-        """Distribute *power_kw* evenly across both guns."""
-        per_gun = max(0.0, min(power_kw, self.power_max_kw)) / 2.0
+    def set_total_power(self, power_w: float) -> None:
+        """Distribute *power_w* evenly across both guns."""
+        per_gun = max(0.0, min(power_w, self.power_max_w)) / 2.0
         self.set_gun_a_power(per_gun)
         self.set_gun_b_power(per_gun)
 

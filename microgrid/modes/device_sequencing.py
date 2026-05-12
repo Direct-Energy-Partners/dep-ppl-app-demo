@@ -322,8 +322,8 @@ class ProcedureConverdanDisable:
         self,
         battery_soc: float,
         ev_sessions_active: bool,
-        prev_infy_kw: float,
-        prev_winline_kw: float,
+        prev_infy_w: float,
+        prev_winline_w: float,
         charger_output_confirmed_zero: bool,
     ) -> dict:
         """Advance one step. Returns commands dict."""
@@ -338,9 +338,9 @@ class ProcedureConverdanDisable:
         elif step == 1:
             # C1: RAMP_DOWN_CHARGERS - Set all EV charger power setpoints → 0kW.
             # Poll charger output power until confirmed = 0.
-            commands["infy_charger_kw"] = max(0, prev_infy_kw - config.CHARGER_RAMP_STEP_KW)
-            commands["winline_charger_kw"] = max(0, prev_winline_kw - config.CHARGER_RAMP_STEP_KW)
-            if commands["infy_charger_kw"] <= 0 and commands["winline_charger_kw"] <= 0:
+            commands["infy_charger_w"] = max(0, prev_infy_w - config.CHARGER_RAMP_STEP_W)
+            commands["winline_charger_w"] = max(0, prev_winline_w - config.CHARGER_RAMP_STEP_W)
+            if commands["infy_charger_w"] <= 0 and commands["winline_charger_w"] <= 0:
                 self.state.advance("C2: Raising REG I-limit")
 
         elif step == 2:
@@ -395,8 +395,8 @@ class ProcedurePlannedShutdown:
 
     def advance(
         self,
-        prev_infy_kw: float,
-        prev_winline_kw: float,
+        prev_infy_w: float,
+        prev_winline_w: float,
         charger_output_zero: bool,
         reg_output_zero: bool,
     ) -> dict:
@@ -411,8 +411,8 @@ class ProcedurePlannedShutdown:
         elif step == 1:
             # D1: STOP_CHARGER_SESSIONS - Set all EV power setpoints = 0kW/h via DEP.
             # Stop all active sessions.
-            commands["infy_charger_kw"] = 0
-            commands["winline_charger_kw"] = 0
+            commands["infy_charger_w"] = 0
+            commands["winline_charger_w"] = 0
             commands["stop_sessions"] = True
             if charger_output_zero or self.state.time_in_step >= 10:
                 self.state.advance("D2: Isolating chargers")
