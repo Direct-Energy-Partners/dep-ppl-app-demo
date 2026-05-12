@@ -14,14 +14,7 @@ import logging
 from dataclasses import dataclass, field
 
 from microgrid import config
-from microgrid.devices.battery import Battery
-from microgrid.devices.dcdc_converter import DCDCConverter
-from microgrid.devices.infypower_rectifier import InfypowerRectifier
-from microgrid.devices.winline_charger import WinlineCharger
-from microgrid.devices.infypower_charger import InfypowerCharger
-from microgrid.devices.ac_meter import ACMeter
-from microgrid.devices.dc_meter import DCMeter
-from microgrid.devices.contactor import Contactor
+from microgrid.devices import Devices
 from microgrid.control.battery_limits import BatteryLimits, compute_battery_limits
 from microgrid.control.protection import ProtectionFlags, ProtectionManager
 from microgrid.modes.base_mode import ModeOutput
@@ -107,33 +100,22 @@ class SystemState:
 class Orchestrator:
     """Main control loop logic - call ``tick()`` once per control cycle."""
 
-    def __init__(
-        self,
-        battery: Battery,
-        converdan: DCDCConverter,
-        rectifier: InfypowerRectifier,
-        winline: WinlineCharger,
-        infypower_charger: InfypowerCharger,
-        ac_meter: ACMeter,
-        dc_meter: DCMeter,
-        k1: Contactor,
-        k3: Contactor,
-        k4: Contactor,
-        k11: Contactor,
-        k13: Contactor,
-    ):
-        self.battery = battery
-        self.converdan = converdan
-        self.rectifier = rectifier
-        self.winline = winline
-        self.infypower_charger = infypower_charger
-        self.ac_meter = ac_meter
-        self.dc_meter = dc_meter
-        self.k1 = k1
-        self.k3 = k3
-        self.k4 = k4
-        self.k11 = k11
-        self.k13 = k13
+    def __init__(self, devices: Devices):
+        self.devices = devices
+
+        # Convenience aliases to sub-groups
+        self.battery = devices.battery
+        self.converdan = devices.converters.dcdc
+        self.rectifier = devices.converters.rectifier
+        self.winline = devices.chargers.winline
+        self.infypower_charger = devices.chargers.infypower
+        self.ac_meter = devices.meters.ac
+        self.dc_meter = devices.meters.dc
+        self.k1 = devices.contactors.k1
+        self.k3 = devices.contactors.k3
+        self.k4 = devices.contactors.k4
+        self.k11 = devices.contactors.k11
+        self.k13 = devices.contactors.k13
 
         # Protection manager
         self.protection = ProtectionManager()

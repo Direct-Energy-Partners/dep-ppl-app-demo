@@ -13,14 +13,11 @@ import logging
 import time
 
 from microgrid import config
-from microgrid.devices.battery import Battery
-from microgrid.devices.dcdc_converter import DCDCConverter
-from microgrid.devices.infypower_rectifier import InfypowerRectifier
-from microgrid.devices.winline_charger import WinlineCharger
-from microgrid.devices.infypower_charger import InfypowerCharger
-from microgrid.devices.ac_meter import ACMeter
-from microgrid.devices.dc_meter import DCMeter
-from microgrid.devices.contactor import Contactor
+from microgrid.devices import (
+    Devices, Converters, Chargers, Meters, Contactors,
+    Battery, DCDCConverter, InfypowerRectifier,
+    WinlineCharger, InfypowerCharger, ACMeter, DCMeter, Contactor,
+)
 from microgrid.control.orchestrator import Orchestrator
 
 logging.basicConfig(
@@ -158,20 +155,29 @@ def run_scenario(
     if not grid_available:
         app.inject(config.RECTIFIER_ID, {"state": "outage"})
 
-    orchestrator = Orchestrator(
+    devices = Devices(
         battery=Battery(app),
-        converdan=DCDCConverter(app),
-        rectifier=InfypowerRectifier(app),
-        winline=WinlineCharger(app),
-        infypower_charger=InfypowerCharger(app),
-        ac_meter=ACMeter(app),
-        dc_meter=DCMeter(app),
-        k1=Contactor(app, config.CONTACTOR_K1),
-        k3=Contactor(app, config.CONTACTOR_K3),
-        k4=Contactor(app, config.CONTACTOR_K4),
-        k11=Contactor(app, config.CONTACTOR_K11),
-        k13=Contactor(app, config.CONTACTOR_K13),
+        converters=Converters(
+            dcdc=DCDCConverter(app),
+            rectifier=InfypowerRectifier(app),
+        ),
+        chargers=Chargers(
+            winline=WinlineCharger(app),
+            infypower=InfypowerCharger(app),
+        ),
+        meters=Meters(
+            ac=ACMeter(app),
+            dc=DCMeter(app),
+        ),
+        contactors=Contactors(
+            k1=Contactor(app, config.CONTACTOR_K1),
+            k3=Contactor(app, config.CONTACTOR_K3),
+            k4=Contactor(app, config.CONTACTOR_K4),
+            k11=Contactor(app, config.CONTACTOR_K11),
+            k13=Contactor(app, config.CONTACTOR_K13),
+        ),
     )
+    orchestrator = Orchestrator(devices)
 
     for i in range(ticks):
         status = orchestrator.tick()
