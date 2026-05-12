@@ -164,6 +164,9 @@ def run_scenario(
         infypower_charger=InfypowerCharger(app),
         ac_meter=ACMeter(app),
         dc_meter=DCMeter(app),
+        k1=Contactor(app, config.CONTACTOR_K1),
+        k3=Contactor(app, config.CONTACTOR_K3),
+        k4=Contactor(app, config.CONTACTOR_K4),
         k11=Contactor(app, config.CONTACTOR_K11),
         k13=Contactor(app, config.CONTACTOR_K13),
     )

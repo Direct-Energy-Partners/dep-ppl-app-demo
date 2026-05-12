@@ -14,3 +14,7 @@ class Contactor(Device):
     @property
     def is_closed(self) -> bool:
         return self.read("measure.contactor.main") == "1"
+
+    @property
+    def is_open(self) -> bool:
+        return self.read("measure.contactor.main") == "0"

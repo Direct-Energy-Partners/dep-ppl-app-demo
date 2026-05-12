@@ -320,49 +320,38 @@ class ProcedureConverdanDisable:
 
     def advance(
         self,
-        battery_soc: float,
-        ev_sessions_active: bool,
         prev_infy_w: float,
         prev_winline_w: float,
-        charger_output_confirmed_zero: bool,
     ) -> dict:
         """Advance one step. Returns commands dict."""
         commands: dict = {}
         step = self.state.step
 
         if step == 0:
-            # C0: TRIGGER - BESS SOC ≤ 20% (with EV sessions active) OR
-            # SOC ≤ 15% + ≤ 85% (hard protection) OR planned shutdown.
+            # C0: TRIGGER
             self.state.advance("C1: Ramping down chargers")
 
         elif step == 1:
-            # C1: RAMP_DOWN_CHARGERS - Set all EV charger power setpoints → 0kW.
-            # Poll charger output power until confirmed = 0.
+            # C1: RAMP_DOWN_CHARGERS
             commands["infy_charger_w"] = max(0, prev_infy_w - config.CHARGER_RAMP_STEP_W)
             commands["winline_charger_w"] = max(0, prev_winline_w - config.CHARGER_RAMP_STEP_W)
             if commands["infy_charger_w"] <= 0 and commands["winline_charger_w"] <= 0:
                 self.state.advance("C2: Raising REG I-limit")
 
         elif step == 2:
-            # C2: RAISE_REG_LIMIT - Set REG I-limit → 100A (CAN cmd 0x1C).
-            # Walk-in = 5s (factory default - confirm active).
+            # C2: RAISE_REG_LIMIT
             commands["reg_current"] = config.RECTIFIER_CURRENT_MAX
             if self.state.time_in_step >= config.WALK_IN_TIME_S:
                 self.state.advance("C3: Converdan passive")
 
         elif step == 3:
-            # C3: CONVERDAN_PASSIVE - CAN 0x207: B0=0x01, B1=0x05.
-            # Walk-in = 5s (factory default - confirm active).
-            # Poll 0x202C until P1 current = 0A.
-            # Converdan now in passive state.
+            # C3: CONVERDAN_PASSIVE
             commands["converdan_disable"] = True
             if self.state.time_in_step >= config.WALK_IN_TIME_S:
                 self.state.advance("C4: Opening K3")
 
         elif step == 4:
-            # C4: OPEN_K3 - Issue K3 open command.
-            # K3 opens - Converdan Port 1 isolated from DC bus.
-            # Bus now held solely by REG.
+            # C4: OPEN_K3
             commands["open_k3"] = True
             if self.state.time_in_step >= 2:
                 self.state.advance("C5: Complete")
@@ -395,74 +384,65 @@ class ProcedurePlannedShutdown:
 
     def advance(
         self,
-        prev_infy_w: float,
-        prev_winline_w: float,
         charger_output_zero: bool,
         reg_output_zero: bool,
+        k1_open: bool,
+        k3_open: bool,
+        k4_open: bool,
+        k11_open: bool,
+        k13_open: bool,
     ) -> dict:
         """Advance one step. Returns commands dict."""
         commands: dict = {}
         step = self.state.step
 
         if step == 0:
-            # D0: TRIGGER - Operator shutdown command OR fault-induced graceful shutdown.
+            # D0: TRIGGER
             self.state.advance("D1: Stopping charger sessions")
 
         elif step == 1:
-            # D1: STOP_CHARGER_SESSIONS - Set all EV power setpoints = 0kW/h via DEP.
-            # Stop all active sessions.
+            # D1: STOP_CHARGER_SESSIONS
             commands["infy_charger_w"] = 0
             commands["winline_charger_w"] = 0
-            commands["stop_sessions"] = True
-            if charger_output_zero or self.state.time_in_step >= 10:
+            if charger_output_zero:
                 self.state.advance("D2: Isolating chargers")
 
         elif step == 2:
-            # D2: ISOLATE_CHARGERS - Open K11 (Infy EV charger via DEP).
-            # Open K13 (Winline EV charger via DEP).
-            # Chargers now isolated from DC bus.
+            # D2: ISOLATE_CHARGERS
             commands["open_k11"] = True
             commands["open_k13"] = True
-            if self.state.time_in_step >= 2:
+            if k11_open and k13_open:
                 self.state.advance("D3: Disabling REG")
 
         elif step == 3:
-            # D3: DISABLE_REG - Ramp REG I-limit → 0A (CAN 0x1C).
-            # Send REG OFF (CAN 0x1A).
-            # Poll CAN telemetry until REG output = 0.
+            # D3: DISABLE_REG
             commands["reg_current"] = 0
             commands["reg_disable"] = True
-            if reg_output_zero or self.state.time_in_step >= 10:
+            if reg_output_zero:
                 self.state.advance("D4: Opening K1")
 
         elif step == 4:
-            # D4: OPEN_K1 - Issue K1 open command.
-            # REG fully isolated from DC bus.
+            # D4: OPEN_K1
             commands["open_k1"] = True
-            if self.state.time_in_step >= 2:
+            if k1_open:
                 self.state.advance("D5: Converdan passive")
 
         elif step == 5:
-            # D5: CONVERDAN_PASSIVE - CAN 0x207: B0=0x01, B1=0x02.
-            # Poll 0x202C; wait P1 current = 2A.
-            # Stop Converdan keepalive.
+            # D5: CONVERDAN_PASSIVE
             commands["converdan_disable"] = True
-            if self.state.time_in_step >= 5:
+            if True:  # TODO: Check if Converdan is in passive mode
                 self.state.advance("D6: Opening K3")
 
         elif step == 6:
-            # D6: OPEN_K3 - Open K3. Converdan Port 1 isolated from bus.
-            # Bus voltage now decaying on capacitance.
+            # D6: OPEN_K3
             commands["open_k3"] = True
-            if self.state.time_in_step >= 2:
+            if k3_open:
                 self.state.advance("D7: Opening K4")
 
         elif step == 7:
-            # D7: OPEN_K4 - Open K4. BESS Port 2 side now isolated.
-            # BESS internal contactors remain under BMS control.
+            # D7: OPEN_K4
             commands["open_k4"] = True
-            commands["battery_open_contactor"] = True
-            if self.state.time_in_step >= 2:
+            if k4_open:
                 self.state.advance("D8: Complete")
                 self.state.complete()
                 log.info("Proc D: Planned Shutdown COMPLETE")

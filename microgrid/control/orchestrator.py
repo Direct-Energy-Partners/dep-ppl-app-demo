@@ -118,6 +118,9 @@ class Orchestrator:
         infypower_charger: InfypowerCharger,
         ac_meter: ACMeter,
         dc_meter: DCMeter,
+        k1: Contactor,
+        k3: Contactor,
+        k4: Contactor,
         k11: Contactor,
         k13: Contactor,
     ):
@@ -128,6 +131,9 @@ class Orchestrator:
         self.infypower_charger = infypower_charger
         self.ac_meter = ac_meter
         self.dc_meter = dc_meter
+        self.k1 = k1
+        self.k3 = k3
+        self.k4 = k4
         self.k11 = k11
         self.k13 = k13
 
@@ -341,13 +347,16 @@ class Orchestrator:
             self.proc_d.start()
 
         commands = self.proc_d.advance(
-            prev_infy_w=self._prev_infypower_w,
-            prev_winline_w=self._prev_winline_w,
             charger_output_zero=(
                 self.infypower_charger.total_power <= 0
                 and self.winline.total_power <= 0
             ),
             reg_output_zero=self.rectifier.port2_current <= 0.5,
+            k1_open=self.k1.is_open,
+            k3_open=self.k3.is_open,
+            k4_open=self.k4.is_open,
+            k11_open=self.k11.is_open,
+            k13_open=self.k13.is_open,
         )
         self._execute_procedure_commands(commands)
 
@@ -554,11 +563,11 @@ class Orchestrator:
             log.info("Proc: opening K1")
             self.rectifier.write({"control.contactor.k1": "open"})
 
-        if commands.get("open_k11") or commands.get("stop_sessions"):
+        if commands.get("open_k11"):
             log.info("Proc: stopping Infypower charger / opening K11")
             self.infypower_charger.disable()
 
-        if commands.get("open_k13") or commands.get("stop_sessions"):
+        if commands.get("open_k13"):
             log.info("Proc: stopping Winline charger / opening K13")
             self.winline.disable()
 
