@@ -352,6 +352,7 @@ class Orchestrator:
                 and self.winline.total_power <= 0
             ),
             reg_output_zero=self.rectifier.port2_current <= 0.5,
+            converdan_port1_current=self.converdan.port1_current,
             k1_open=self.k1.is_open,
             k3_open=self.k3.is_open,
             k4_open=self.k4.is_open,

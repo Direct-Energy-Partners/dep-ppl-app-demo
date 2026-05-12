@@ -67,36 +67,6 @@ class ProcedureState:
         return time.time() - self.step_entry_time
 
 
-# =============================================================================
-# PROCEDURE A - BESS BLACK START (preferred startup path)
-# =============================================================================
-# Steps:
-#   A0: START - PLC alive (UPS / aux supply). Check BESS SOC ≥ 20%.
-#       Check all contactors open.
-#   A1: BESS_STARTUP - Command BESS internal contactors to close, poll to confirm
-#       status. Poll SOC msg - confirm ≥ 20%.
-#   A2: CONVERDAN_P2_PRECHARGE - Precharge Port 2 of Converdan via K4.
-#   A3: CONVERDAN_STARTUP - Set base address (hardcoded MAC).
-#       Send 0x201: ratio=1, mode 5. Send 0x201: B0=enable, B1=0x05.
-#       Poll 0x202C; wait P1 voltage stable.
-#   A4: CONVERDAN_SET_RATIO - Send 0x203: ratio=1.058, mode 5.
-#       Port 1 ramp/o power = 725–757V.
-#       Poll 0x202C; wait P1 voltage stable (±5V). Start keepalive.
-#   A5: CLOSE_K3 - Close K3 and connect Port 1 of Converdan to DC bus.
-#       Confirm stable DC bus voltage via Acrel DC meter.
-#   A6: START_INFY_REG - Confirm grid available (AC meter reading:
-#       stable voltage 216–253V on 3 phases).
-#       Confirm Infy REG online and send V (limit = DC bus voltage, I limit = 0).
-#       Start keepalive.
-#   A7: CLOSE_K1 - Poll Infy REG and confirm output voltage within 5V of DC bus
-#       voltage. Close K1 contactor.
-#   A8: ENABLE_CHARGERS - Precharge EV chargers through K11 and K13.
-#       Poll status and confirm ready with no alarms.
-#   A9: COMPLETE - Bus live. EV chargers online.
-#       Grid present? → D1: GRID_CONNECTED
-#       Grid absent? → D1: ISLANDED
-
-
 class ProcedureBatteryBlackStart:
     """Procedure A - BESS Black Start."""
 
@@ -130,7 +100,7 @@ class ProcedureBatteryBlackStart:
 
         Commands dict keys: 'bess_close_contactor', 'converdan_enable',
         'converdan_ratio', 'close_k3', 'reg_enable', 'reg_voltage',
-        'close_k1', 'enable_chargers'
+        'close_k1', 'close_k11', 'close_k13'
         """
         commands: dict = {}
         step = self.state.step
@@ -155,7 +125,7 @@ class ProcedureBatteryBlackStart:
             if self.state.time_in_step >= 5:
                 self.state.advance("A3: Starting Converdan")
                 commands["converdan_enable"] = True
-                commands["converdan_ratio"] = 1
+                commands["converdan_ratio"] = 1.0
 
         elif step == 3:
             # A3: Converdan startup - wait for P1 voltage stable
@@ -199,7 +169,8 @@ class ProcedureBatteryBlackStart:
 
         elif step == 8:
             # A8: Enable EV chargers via K11, K13
-            commands["enable_chargers"] = True
+            commands["close_k11"] = True
+            commands["close_k13"] = True
             if chargers_ready or self.state.time_in_step >= 10:
                 self.state.advance("A9: Complete")
                 self.state.complete()
@@ -243,7 +214,7 @@ class ProcedureGridBlackStart:
         step = self.state.step
 
         if step == 0:
-            # B0: Check grid/AC confirmed present
+            # B0: Start
             if ac_grid_available:
                 self.state.advance("B1: Starting Infy REG at grid-only voltage")
                 commands["reg_enable"] = True
@@ -253,9 +224,8 @@ class ProcedureGridBlackStart:
                 self.state.fail("Grid not available for grid blackstart")
 
         elif step == 1:
-            # B1: Confirm REG online, output voltage at 750VDC. I limit = 0.
-            # Start keepalive.
-            if reg_output_voltage > 700 and self.state.time_in_step >= 5:
+            # B1: Start REG
+            if reg_output_voltage > config.DC_BUS_VOLTAGE_SUSPEND_THRESHOLD:
                 self.state.advance("B2: Closing K1")
                 commands["close_k1"] = True
 
@@ -267,30 +237,26 @@ class ProcedureGridBlackStart:
                 self.state.fail("DC bus voltage not established via REG")
 
         elif step == 3:
-            # B3: BUS_LIVE_GRID_ONLY - BESS/Converdan not yet connected.
-            # Keepalive continues at B1=0x03, B1=0x05.
-            # REG I-limit = 100A (sole supply). Start keepalive.
+            # B3: BUS_LIVE_GRID_ONLY
             commands["reg_current"] = config.RECTIFIER_CURRENT_MAX
             if self.state.time_in_step >= 5:
                 self.state.advance("B4: Enabling chargers")
-                commands["enable_chargers"] = True
+                commands["close_k11"] = True
+                commands["close_k13"] = True
 
         elif step == 4:
             # B4: Enable EV chargers through K11 and K13.
-            # Poll status and confirm ready with no alarms.
             if chargers_ready or self.state.time_in_step >= 10:
                 self.state.advance("B5: Awaiting battery recovery")
 
         elif step == 5:
-            # B5: Monitor BESS status via Modbus. Wait for SOC >= 20%.
-            # Execute Procedure E (Converdan reconnect).
-            # Until then: D2 GRID_SOLE_SUPPLY.
+            # B5: Monitor BESS status via Modbus.
             if battery_available and battery_soc >= config.BATTERY_SOC_BLACKSTART_MIN:
                 self.state.advance("B6: Battery recovered, initiating Proc E")
             # This step remains until BESS recovers or stays as grid-only
 
         elif step == 6:
-            # B6: Complete - transitions to D2 GRID_SOLE_SUPPLY / BESS_RECHARGING
+            # B6: Complete
             self.state.complete()
             log.info("Proc B: Grid Black Start COMPLETE")
 
@@ -386,6 +352,7 @@ class ProcedurePlannedShutdown:
         self,
         charger_output_zero: bool,
         reg_output_zero: bool,
+        converdan_port1_current: float,
         k1_open: bool,
         k3_open: bool,
         k4_open: bool,
@@ -430,7 +397,7 @@ class ProcedurePlannedShutdown:
         elif step == 5:
             # D5: CONVERDAN_PASSIVE
             commands["converdan_disable"] = True
-            if True:  # TODO: Check if Converdan is in passive mode
+            if converdan_port1_current < 2:
                 self.state.advance("D6: Opening K3")
 
         elif step == 6:
@@ -486,42 +453,37 @@ class ProcedureConverdanReconnect:
         step = self.state.step
 
         if step == 0:
-            # E0: TRIGGER - Bus live via REG (grid black start done).
+            # E0: TRIGGER
             self.state.advance("E1: Battery startup")
             commands["battery_close_contactor"] = True
 
         elif step == 1:
-            # E1: Battery startup - command battery internal contactors to close,
-            # poll to confirm status. Poll SOC msg - confirm ≥ 20%.
+            # E1: Battery startup
             if battery_contactor_closed:
                 self.state.advance("E2: Precharging Converdan P2")
             elif self.state.time_in_step > 30:
                 self.state.fail("Battery contactor did not close within 30s")
 
         elif step == 2:
-            # E2: CONVERDAN_P2_PRECHARGE - Precharge Port 2 of Converdan via K4.
+            # E2: CONVERDAN_P2_PRECHARGE
             if self.state.time_in_step >= 5:
                 self.state.advance("E3: Starting Converdan")
                 commands["converdan_enable"] = True
-                commands["converdan_ratio"] = config.CONVERDAN_RATIO_NOMINAL
+                commands["converdan_ratio"] = 1.0
 
         elif step == 3:
-            # E3: CONVERDAN_STARTUP - Set base address (hardcoded MAC).
-            # Send 0x201: B0=enable, B1=0x05. Send 0x201: ratio=1.058, mode 5.
-            # Port 1 ramp/o power = 725–757V.
-            # Poll 0x202C; wait P1 voltage stable (±5V). Start keepalive.
+            # E3: CONVERDAN_STARTUP
             if converdan_port1_voltage > 0 and self.state.time_in_step >= 5:
                 self.state.advance("E4: Setting ratio")
 
         elif step == 4:
-            # E4: CONVERDAN_SET_RATIO - Set ratio 1.058, mode 5.
+            # E4: CONVERDAN_SET_RATIO
             commands["converdan_ratio"] = config.CONVERDAN_RATIO_NOMINAL
             if self.state.time_in_step >= 5:
                 self.state.advance("E5: Matching REG voltage")
 
         elif step == 5:
-            # E5: INFY_REG_MATCH - Set REG V to match P1 voltage.
-            # Poll Acrel DC meter to confirm.
+            # E5: INFY_REG_MATCH
             commands["reg_voltage"] = converdan_port1_voltage
             voltage_diff = abs(reg_output_voltage - converdan_port1_voltage) if converdan_port1_voltage > 0 else 999
             if voltage_diff <= 5 and self.state.time_in_step >= 5:
@@ -529,16 +491,14 @@ class ProcedureConverdanReconnect:
                 commands["close_k3"] = True
 
         elif step == 6:
-            # E6: CLOSE_K3 - Close K3 and connect Port 1 of Converdan to DC bus.
-            # Confirm stable voltage via Acrel DC meter.
+            # E6: CLOSE_K3
             if dc_bus_voltage > config.DC_BUS_VOLTAGE_SUSPEND_THRESHOLD:
                 self.state.advance("E7: Reducing REG I-limit")
             elif self.state.time_in_step > 15:
                 self.state.fail("DC bus not stable after K3 close")
 
         elif step == 7:
-            # E7: REDUCE_REG_LIMIT - Ramp REG I-limit → 0A.
-            # REG remains as voltage follower / backup.
+            # E7: REDUCE_REG_LIMIT
             commands["reg_current"] = 0
             if self.state.time_in_step >= 5:
                 self.state.advance("E8: Complete")

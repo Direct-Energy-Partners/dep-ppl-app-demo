@@ -27,6 +27,14 @@ class Converdan(Device):
         return self.read_float("measure.ports.port1.voltage")
 
     @property
+    def port1_current(self) -> float:
+        return self.read_float("measure.ports.port1.current")
+
+    @property
+    def port1_power(self) -> float:
+        return self.read_float("measure.ports.port1.power")
+
+    @property
     def port2_voltage(self) -> float:
         return self.read_float("measure.ports.port2.voltage")
 
