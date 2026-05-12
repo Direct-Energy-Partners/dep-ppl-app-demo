@@ -22,7 +22,6 @@ class InfypowerCharger(Device):
 
     # -- measurements ---------------------------------------------------------
 
-    @property
     def connector_status(self, connector_id: int) -> str | None:
         return self.read(f"connector.{connector_id}.charging.status")
 
