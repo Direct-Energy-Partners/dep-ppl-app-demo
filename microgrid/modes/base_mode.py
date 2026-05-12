@@ -3,7 +3,8 @@ Output data structure for all operating modes.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Dict, Any
 
 
 @dataclass
@@ -17,3 +18,4 @@ class ModeOutput:
     infypower_charger_power_w: float = 0.0
     winline_charger_power_w: float = 0.0
     description: str = ""
+    procedure_commands: Dict[str, Any] = field(default_factory=dict)

@@ -147,7 +147,7 @@ class Orchestrator:
             ac_grid_available=state.ac_grid_available,
             bus_live=state.bus_live,
             ev_contactors_closed=state.ev_contactors_closed,
-            all_devices_idle=self._all_devices_idle(state),
+            all_devices_idle=self._all_devices_idle(),
             comms_loss=state.protection.communication_loss,
             equipment_fault=state.protection.equipment_fault,
             battery_soc_critical=state.protection.battery_soc_critical_low,
@@ -235,7 +235,6 @@ class Orchestrator:
             reg_output_voltage=state.reg_output_voltage,
             chargers_ready=True,
         )
-        self._execute_procedure_commands(commands)
 
         return ModeOutput(
             converdan_enabled=commands.get("converdan_enable", False),
@@ -246,6 +245,7 @@ class Orchestrator:
             infypower_charger_power_w=0,
             winline_charger_power_w=0,
             description=f"BATTERY_BLACKSTART - {self.proc_battery_blackstart.state.description}",
+            procedure_commands=commands,
         )
 
     def _run_grid_blackstart(self, state: SystemState) -> ModeOutput:
@@ -261,7 +261,6 @@ class Orchestrator:
             battery_soc=state.battery_soc,
             chargers_ready=True,
         )
-        self._execute_procedure_commands(commands)
 
         return ModeOutput(
             converdan_enabled=commands.get("converdan_enable", False),
@@ -272,6 +271,7 @@ class Orchestrator:
             infypower_charger_power_w=0,
             winline_charger_power_w=0,
             description=f"GRID_BLACKSTART - {self.proc_grid_blackstart.state.description}",
+            procedure_commands=commands,
         )
 
     def _run_grid_connected(self, state: SystemState) -> ModeOutput:
@@ -328,7 +328,6 @@ class Orchestrator:
             k11_open=self.k11.is_open,
             k13_open=self.k13.is_open,
         )
-        self._execute_procedure_commands(commands)
 
         return ModeOutput(
             converdan_enabled=not commands.get("converdan_disable", False),
@@ -339,6 +338,7 @@ class Orchestrator:
             infypower_charger_power_w=commands.get("infy_charger_w", 0),
             winline_charger_power_w=commands.get("winline_charger_w", 0),
             description=f"PLANNED_SHUTDOWN - {self.proc_planned_shutdown.state.description}",
+            procedure_commands=commands,
         )
 
     # --------------------------------------------------------------------- #
@@ -465,57 +465,42 @@ class Orchestrator:
     # Internal - Hardware output
     # --------------------------------------------------------------------- #
 
-    def _execute_procedure_commands(self, commands: dict) -> None:
-        """
-        Execute one-shot side-effect calls from a D4 procedure step.
-        Only handles actions that cannot be expressed as continuous setpoints:
-        contactor open/close, charger session stop, charger isolation.
-
-        Continuous device setpoints (REG voltage/current, Converdan ratio) are
-        carried in the ModeOutput returned by the procedure runner and applied
-        by _apply_output in the normal tick path.
-        """
-        if commands.get("battery_close_contactor"):
-            log.info("Proc: closing battery contactor")
-            self.battery.close_contactor()
-
-        if commands.get("battery_open_contactor") or commands.get("open_k4"):
-            log.info("Proc: opening battery contactor")
-            self.battery.open_contactor()
-
-        if commands.get("close_k3"):
-            log.info("Proc: closing K3")
-            self.converdan.write({"control.contactor.k3": "close"})
-
-        if commands.get("open_k3"):
-            log.info("Proc: opening K3")
-            self.converdan.write({"control.contactor.k3": "open"})
-
-        if commands.get("close_k1"):
-            log.info("Proc: closing K1")
-            self.rectifier.write({"control.contactor.k1": "close"})
-
-        if commands.get("open_k1"):
-            log.info("Proc: opening K1")
-            self.rectifier.write({"control.contactor.k1": "open"})
-
-        if commands.get("open_k11"):
-            log.info("Proc: stopping Infypower charger / opening K11")
-            self.infypower_charger.disable()
-
-        if commands.get("open_k13"):
-            log.info("Proc: stopping Winline charger / opening K13")
-            self.winline.disable()
-
     def _apply_output(self, output: ModeOutput) -> None:
         """
-        Send continuous setpoints to hardware every tick.
-        Called for all D1 modes including procedure modes - the ModeOutput
-        produced by procedure runners already reflects the correct state
-        (e.g. converdan_enabled=False when Converdan is being disabled).
-        One-shot contactor/session actions are handled before this via
-        _execute_procedure_commands().
+        Send all commands to hardware every tick.
+
+        One-shot contactor/session side-effects from procedure steps are read
+        from output.procedure_commands (populated by the _run_* procedure
+        methods).  Continuous device setpoints are taken from the ModeOutput
+        fields directly.
         """
+        cmds = output.procedure_commands
+
+        # -- One-shot contactor / session commands (procedure steps only) -----
+        if cmds.get("battery_close_contactor"):
+            self.battery.close_contactor()
+
+        if cmds.get("battery_open_contactor") or cmds.get("open_k4"):
+            self.battery.open_contactor()
+
+        if cmds.get("close_k3"):
+            self.converdan.write({"control.contactor.k3": "close"})
+
+        if cmds.get("open_k3"):
+            self.converdan.write({"control.contactor.k3": "open"})
+
+        if cmds.get("close_k1"):
+            self.rectifier.write({"control.contactor.k1": "close"})
+
+        if cmds.get("open_k1"):
+            self.rectifier.write({"control.contactor.k1": "open"})
+
+        if cmds.get("open_k11"):
+            self.infypower_charger.disable()
+
+        if cmds.get("open_k13"):
+            self.winline.disable()
+
         # -- Converdan --------------------------------------------------------
         if output.converdan_enabled:
             self.converdan.enable(output.converdan_ratio)
@@ -544,14 +529,9 @@ class Orchestrator:
     # Internal - Helpers
     # --------------------------------------------------------------------- #
 
-    def _all_devices_idle(self, state: SystemState) -> bool:
+    def _all_devices_idle(self) -> bool:
         """Check if all devices are idle (for shutdown completion)."""
-        return (
-            not state.ev_sessions_active
-            and state.prev_rectifier_current <= 0
-            and self.proc_planned_shutdown.is_complete
-        )
-
+        return self.proc_planned_shutdown.is_complete
 
     def _get_sub_state_name(self) -> str:
         """Get the current sub-state name for logging."""
